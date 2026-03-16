@@ -1,10 +1,19 @@
-// ------------------------------------------------------------
-// types.rs — Listing, ListingStatus, and error definitions
-// ------------------------------------------------------------
+// types.rs
+use soroban_sdk::{contracterror, contracttype, Address, Bytes, Symbol};
 
-use soroban_sdk::{contracttype, symbol_short, Address, Bytes, Symbol};
+// ✅ #[contracterror] generates Into<Error> automatically
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum MarketplaceError {
+    InvalidCid           = 1,
+    InvalidPrice         = 2,
+    ListingNotFound      = 3,
+    ListingNotActive     = 4,
+    Unauthorized         = 5,
+    CannotBuyOwnListing  = 6,
+}
 
-/// Possible states for a marketplace listing.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ListingStatus {
@@ -13,47 +22,15 @@ pub enum ListingStatus {
     Cancelled,
 }
 
-/// A single marketplace listing stored on-chain.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Listing {
-    /// Auto-incremented on-chain ID
-    pub listing_id: u64,
-    /// Stellar address of the artist / seller
-    pub artist: Address,
-    /// IPFS CID pointing to the artwork metadata JSON
+    pub listing_id:   u64,
+    pub artist:       Address,
     pub metadata_cid: Bytes,
-    /// Price in stroops (1 XLM = 10_000_000 stroops)
-    pub price: i128,
-    /// Currency symbol — "XLM" for MVP
-    pub currency: Symbol,
-    /// Current listing status
-    pub status: ListingStatus,
-    /// Buyer address — populated after purchase
-    pub owner: Option<Address>,
-    /// Ledger sequence at which the listing was created
-    pub created_at: u32,
+    pub price:        i128,
+    pub currency:     Symbol,
+    pub status:       ListingStatus,
+    pub owner:        Option<Address>,
+    pub created_at:   u32,
 }
-
-/// Contract-level errors returned as u32 status codes.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MarketplaceError {
-    /// Listing does not exist
-    ListingNotFound = 1,
-    /// Caller is not the artist / owner of the listing
-    Unauthorized = 2,
-    /// Listing is not in Active state
-    ListingNotActive = 3,
-    /// Artist cannot buy their own listing
-    CannotBuyOwnListing = 4,
-    /// Price / amount mismatch
-    InvalidAmount = 5,
-    /// CID string is empty
-    InvalidCid = 6,
-    /// Price must be > 0
-    InvalidPrice = 7,
-}
-
-// Convenience symbol constants — compile-time validated 10-byte symbols.
-pub const CURRENCY_XLM: Symbol = symbol_short!("XLM");

@@ -165,9 +165,11 @@ impl MarketplaceContract {
     /// well-known, deterministic contract ID for the native XLM asset on
     /// every Stellar network (both testnet and mainnet).
     fn xlm_token_address(env: &Env) -> Address {
-        Address::from_str(
-            env,
-            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        Address::from_string_bytes(
+            &soroban_sdk::Bytes::from_slice(
+                env,
+                b"CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+            ),
         )
     }
 }

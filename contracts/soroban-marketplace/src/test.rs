@@ -8,8 +8,8 @@ use super::*;
 use soroban_sdk::{
     bytes,
     symbol_short,
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
-    Address, Env, IntoVal,
+    testutils::Address as _,
+    Address, Env,
 };
 
 /// Helper — deploy the contract and return (env, client, token_admin, token_id).
@@ -17,11 +17,12 @@ fn setup() -> (Env, MarketplaceContractClient<'static>, Address, Address, Addres
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, MarketplaceContract);
+    // ✅ use register() instead of register_contract()
+    let contract_id = env.register(MarketplaceContract, ());
     let client = MarketplaceContractClient::new(&env, &contract_id);
 
     let artist = Address::generate(&env);
-    let buyer = Address::generate(&env);
+    let buyer  = Address::generate(&env);
 
     (env, client, artist, buyer, contract_id)
 }
@@ -109,6 +110,43 @@ fn test_get_artist_listings() {
     assert_eq!(ids.get(1).unwrap(), 2_u64);
     assert_eq!(ids.get(2).unwrap(), 3_u64);
 }
+
+
+#[test]
+fn test_buy_artwork_success() {
+    use soroban_sdk::token::StellarAssetClient;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_admin_addr = Address::generate(&env);
+
+    // ✅ takes Address by value (not reference), returns StellarAssetContract
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin_addr);
+
+    // ✅ extract the Address from the StellarAssetContract via .address()
+    let token_admin = StellarAssetClient::new(&env, &token_contract.address());
+
+    let contract_id = env.register(MarketplaceContract, ());
+    let client      = MarketplaceContractClient::new(&env, &contract_id);
+
+    let artist = Address::generate(&env);
+    let buyer  = Address::generate(&env);
+
+    token_admin.mint(&buyer, &100_000_000_i128);
+
+    let cid   = bytes!(&env, 0x516d74657374);
+    let price = 10_000_000_i128;
+    let id    = client.create_listing(&artist, &cid, &price, &symbol_short!("XLM"));
+
+    let result = client.buy_artwork(&buyer, &id);
+    assert!(result);
+
+    let listing = client.get_listing(&id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer));
+}
+
 
 // ── get_listing not found ────────────────────────────────────
 
