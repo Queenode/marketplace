@@ -17,11 +17,14 @@ mod tests {
         let cid = bytes!(&env, 0x516d546573744349444f6e495046533132333435);
         let price: i128 = 10_000_000;
 
+        client.set_admin(&artist);
+        client.add_token_to_whitelist(&contract_id);
         let listing_id = client.create_listing(
             &artist,
             &cid,
             &price,
             &symbol_short!("XLM"),
+            &contract_id,
         );
 
         assert_eq!(listing_id, 1u64);
@@ -48,6 +51,9 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 use crate::types::Listing;
 
+/// Storage key for the admin address
+pub const ADMIN_KEY: &str = "admin";
+
 /// Storage key variants for the marketplace contract.
 #[contracttype]
 #[derive(Clone)]
@@ -58,6 +64,10 @@ pub enum DataKey {
     Listing(u64),
     /// Stores a `Vec<u64>` of listing IDs owned by an artist.
     ArtistListings(Address),
+    /// Stores the admin address
+    Admin,
+    /// Stores the token whitelist as a Vec<Address>
+    TokenWhitelist,
 }
 
 // ── Bump amounts (ledger sequences) ─────────────────────────

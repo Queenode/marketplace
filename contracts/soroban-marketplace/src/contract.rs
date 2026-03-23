@@ -1,3 +1,4 @@
+use soroban_sdk::Map;
 // ------------------------------------------------------------
 // contract.rs — Afristore Marketplace contract implementation
 // ------------------------------------------------------------
@@ -26,6 +27,60 @@ pub struct MarketplaceContract;
 
 #[contractimpl]
 impl MarketplaceContract {
+    // ── Admin/Whitelist Management ─────────────────────────
+
+    /// Set the admin address (can only be set once)
+    pub fn set_admin(env: Env, admin: Address) {
+        let key = crate::storage::DataKey::Admin;
+        if env.storage().persistent().get::<_, Address>(&key).is_some() {
+            panic_with_error!(&env, MarketplaceError::Unauthorized);
+        }
+        admin.require_auth();
+        env.storage().persistent().set(&key, &admin);
+    }
+
+    /// Add a token to the whitelist (admin only)
+    pub fn add_token_to_whitelist(env: Env, token: Address) {
+        Self::require_admin(&env);
+        let key = crate::storage::DataKey::TokenWhitelist;
+        let mut whitelist = env.storage().persistent().get::<_, Vec<Address>>(&key).unwrap_or(Vec::new(&env));
+        if !whitelist.contains(&token) {
+            whitelist.push_back(token);
+            env.storage().persistent().set(&key, &whitelist);
+        }
+    }
+
+    /// Remove a token from the whitelist (admin only)
+    pub fn remove_token_from_whitelist(env: Env, token: Address) {
+        Self::require_admin(&env);
+        let key = crate::storage::DataKey::TokenWhitelist;
+        let mut whitelist = env.storage().persistent().get::<_, Vec<Address>>(&key).unwrap_or(Vec::new(&env));
+        let mut new_whitelist = Vec::new(&env);
+        for t in whitelist.iter() {
+            if t != token {
+                new_whitelist.push_back(t.clone());
+            }
+        }
+        env.storage().persistent().set(&key, &new_whitelist);
+    }
+
+    /// Internal: require that the caller is the admin
+    fn require_admin(env: &Env) {
+        let key = crate::storage::DataKey::Admin;
+        let admin = env.storage().persistent().get::<_, Address>(&key).expect("admin not set");
+        admin.require_auth();
+    }
+
+    /// Check if a token is whitelisted (returns true if whitelist is empty)
+    fn is_token_whitelisted(env: &Env, token: &Address) -> bool {
+        let key = crate::storage::DataKey::TokenWhitelist;
+        let whitelist = env.storage().persistent().get::<_, Vec<Address>>(&key).unwrap_or(Vec::new(env));
+        if whitelist.is_empty() {
+            true
+        } else {
+            whitelist.contains(token)
+        }
+    }
     // ── create_listing ───────────────────────────────────────
     /// Artist creates a new listing.
     ///
@@ -38,37 +93,36 @@ impl MarketplaceContract {
         metadata_cid: Bytes,
         price: i128,
         currency: Symbol,
+        token: Address,
     ) -> u64 {
-        // Require the artist to have authorised this call.
         artist.require_auth();
-
-        // Validate inputs.
         if metadata_cid.is_empty() {
             panic_with_error!(&env, MarketplaceError::InvalidCid);
         }
         if price <= 0 {
             panic_with_error!(&env, MarketplaceError::InvalidPrice);
         }
-
+        // Whitelist check
+        if !Self::is_token_whitelisted(&env, &token) {
+            panic_with_error!(&env, MarketplaceError::Unauthorized);
+        }
         let listing_id = increment_listing_count(&env);
-
         let currency_cloned = currency.clone();
         let metadata_cid_cloned = metadata_cid.clone();
-
+        let token_cloned = token.clone();
         let listing = Listing {
             listing_id,
             artist: artist.clone(),
             metadata_cid,
             price,
             currency,
+            token,
             status: ListingStatus::Active,
             owner: None,
             created_at: env.ledger().sequence(),
         };
-
         save_listing(&env, &listing);
         add_artist_listing_id(&env, &artist, listing_id);
-
         ListingCreatedEvent {
             listing_id,
             artist: artist.clone(),
@@ -77,7 +131,6 @@ impl MarketplaceContract {
             metadata_cid: metadata_cid_cloned,
             ledger_sequence: env.ledger().sequence(),
         }.publish(&env);
-
         listing_id
     }
 

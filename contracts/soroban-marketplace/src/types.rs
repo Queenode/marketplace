@@ -30,6 +30,7 @@ pub struct Listing {
     pub metadata_cid: Bytes,
     pub price:        i128,
     pub currency:     Symbol,
+    pub token:        Address, // Payment token contract address
     pub status:       ListingStatus,
     pub owner:        Option<Address>,
     pub created_at:   u32,
