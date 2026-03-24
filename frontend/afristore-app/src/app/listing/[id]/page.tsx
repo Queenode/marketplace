@@ -11,6 +11,7 @@ import { getListing, stroopsToXlm, Listing } from "@/lib/contract";
 import { fetchMetadata, cidToGatewayUrl, ArtworkMetadata } from "@/lib/ipfs";
 import { useWalletContext } from "@/context/WalletContext";
 import { useBuyArtwork } from "@/hooks/useMarketplace";
+import { GuardButton } from "@/components/WalletGuard";
 import {
   ArrowLeft,
   ExternalLink,
@@ -19,12 +20,13 @@ import {
   Calendar,
   Tag,
   Hash,
+  Loader2,
 } from "lucide-react";
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { publicKey, isConnected, connect } = useWalletContext();
+  const { publicKey } = useWalletContext();
   const { buy, isBuying, error: buyError } = useBuyArtwork(publicKey);
 
   const [listing, setListing] = useState<Listing | null>(null);
@@ -52,10 +54,6 @@ export default function ListingDetailPage() {
   }, [id]);
 
   const handleBuy = async () => {
-    if (!isConnected) {
-      await connect();
-      return;
-    }
     if (!listing) return;
     const success = await buy(listing.listing_id);
     if (success) {
@@ -182,18 +180,15 @@ export default function ListingDetailPage() {
             )}
 
             {canBuy && !purchased && (
-              <button
-                onClick={handleBuy}
+              <GuardButton
+                onAction={handleBuy}
                 disabled={isBuying}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-3 font-semibold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
+                actionName="To purchase this artwork"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-4 font-bold text-white shadow-xl shadow-brand-500/20 hover:bg-brand-600 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
-                <ShoppingCart size={18} />
-                {!isConnected
-                  ? "Connect Wallet to Buy"
-                  : isBuying
-                    ? "Processing purchase…"
-                    : "Buy Now"}
-              </button>
+                <ShoppingCart size={20} />
+                {isBuying ? "Processing Purchase…" : "Buy Now"}
+              </GuardButton>
             )}
 
             {isOwn && (

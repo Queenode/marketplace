@@ -8,7 +8,8 @@ import { useState, useRef } from "react";
 import Image from "next/image";
 import { useCreateListing, CreateListingInput } from "@/hooks/useMarketplace";
 import { useWalletContext } from "@/context/WalletContext";
-import { Upload, CheckCircle } from "lucide-react";
+import { Upload, CheckCircle, Loader2 } from "lucide-react";
+import { GuardButton } from "./WalletGuard";
 
 interface UploadArtworkFormProps {
   onSuccess?: (listingId: number) => void;
@@ -44,10 +45,6 @@ export function UploadArtworkForm({ onSuccess }: UploadArtworkFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isConnected) {
-      await connect();
-      return;
-    }
     if (!selectedFile) return;
 
     const id = await create({ ...form, imageFile: selectedFile });
@@ -206,17 +203,15 @@ export function UploadArtworkForm({ onSuccess }: UploadArtworkFormProps) {
         </p>
       )}
 
-      <button
+      {/* Button at the end */}
+      <GuardButton
         type="submit"
         disabled={isCreating || !selectedFile}
-        className="w-full rounded-xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
+        actionName="To list your artwork"
+        className="w-full rounded-xl bg-brand-500 py-3.5 text-base font-bold text-white shadow-xl shadow-brand-500/20 hover:bg-brand-600 transition-all active:scale-[0.98] disabled:opacity-50"
       >
-        {!isConnected
-          ? "Connect Wallet to List"
-          : isCreating
-            ? progress || "Processing…"
-            : "List Artwork"}
-      </button>
+        {isCreating ? progress || "Processing…" : "List Artwork"}
+      </GuardButton>
     </form>
   );
 }
