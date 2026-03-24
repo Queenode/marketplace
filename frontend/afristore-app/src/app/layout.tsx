@@ -25,29 +25,39 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900">
+      <body className="min-h-screen bg-brand-50 text-gray-900">
         <WalletProvider>
           <Navbar />
-          <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
-          <footer className="mt-16 border-t border-gray-200 bg-white py-8 text-center text-xs text-gray-400">
-            © {new Date().getFullYear()} Afristore · Built on{" "}
-            <a
-              href="https://stellar.org"
-              className="text-brand-500 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Stellar
-            </a>
-            {" "}·{" "}
-            <a
-              href="https://freighter.app"
-              className="text-brand-500 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Freighter Wallet
-            </a>
+          <main className="w-full">{children}</main>
+          <footer className="bg-midnight-950 border-t border-white/5 py-10 text-center text-sm text-white/30">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6">
+              <p className="font-display text-lg font-bold text-white/50 mb-3">
+                🎨 Afri<span className="text-brand-400/60">store</span>
+              </p>
+              <p>
+                © {new Date().getFullYear()} Afristore · Built on{" "}
+                <a
+                  href="https://stellar.org"
+                  className="text-brand-400/70 hover:text-brand-400 hover:underline transition-colors"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Stellar
+                </a>
+                {" "}·{" "}
+                <a
+                  href="https://freighter.app"
+                  className="text-brand-400/70 hover:text-brand-400 hover:underline transition-colors"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Freighter Wallet
+                </a>
+              </p>
+              <p className="mt-3 text-xs text-white/15">
+                Celebrating African art and heritage through blockchain technology.
+              </p>
+            </div>
           </footer>
         </WalletProvider>
       </body>

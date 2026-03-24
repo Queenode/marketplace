@@ -15,6 +15,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "**.mypinata.cloud",
       },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
   webpack: (config) => {
