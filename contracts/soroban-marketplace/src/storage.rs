@@ -68,6 +68,10 @@ pub enum DataKey {
     Admin,
     /// Stores the token whitelist as a Vec<Address>
     TokenWhitelist,
+        /// Stores the treasury address
+        Treasury,
+        /// Stores the protocol fee in basis points
+        ProtocolFeeBps, // fee in basis points (1/100 of a percent)
 }
 
 // ── Bump amounts (ledger sequences) ─────────────────────────
@@ -135,4 +139,22 @@ pub fn add_artist_listing_id(env: &Env, artist: &Address, listing_id: u64) {
     env.storage()
         .persistent()
         .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+}
+
+// ── Protocol fee and treasury storage ─────────────────────
+
+pub fn set_treasury_storage(env: &Env, addr: &Address) {
+    env.storage().persistent().set(&DataKey::Treasury, addr);
+}
+
+pub fn get_treasury_storage(env: &Env) -> Option<Address> {
+    env.storage().persistent().get(&DataKey::Treasury)
+}
+
+pub fn set_protocol_fee_bps_storage(env: &Env, bps: u32) {
+    env.storage().persistent().set(&DataKey::ProtocolFeeBps, &bps);
+}
+
+pub fn get_protocol_fee_bps_storage(env: &Env) -> Option<u32> {
+    env.storage().persistent().get(&DataKey::ProtocolFeeBps)
 }

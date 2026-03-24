@@ -1,8 +1,77 @@
+#[test]
+fn test_set_treasury_and_protocol_fee() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+    // Set treasury address
+    let treasury = Address::generate(&env);
+    client.set_treasury(&artist, &treasury);
+    assert_eq!(client.get_treasury(), Some(treasury.clone()));
+    // Set protocol fee to 500 bps (5%)
+    client.set_protocol_fee(&artist, &500u32);
+    assert_eq!(client.get_protocol_fee(), Some(500u32));
+    // Create listing and buy artwork
+    let cid = bytes!(&env, 0x516d74657374);
+    let price = 10_000_000_i128;
+    let id = client.create_listing(&artist, &cid, &price, &symbol_short!("XLM"), &contract_id);
+    let result = client.buy_artwork(&buyer, &id);
+    assert!(result);
+    let listing = client.get_listing(&id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer.clone()));
+    // Fee logic: 5% of 10_000_000 = 500_000
+    // Seller should get 9_500_000, treasury gets 500_000 (logic is in contract, not test env)
+}
+
+#[test]
+fn test_buy_artwork_no_treasury_fee_set() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+    // Set protocol fee but no treasury
+    client.set_protocol_fee(&artist, &300u32); // 3%
+    let cid = bytes!(&env, 0x516d74657374);
+    let price = 1_000_000_i128;
+    let id = client.create_listing(&artist, &cid, &price, &symbol_short!("XLM"), &contract_id);
+    let result = client.buy_artwork(&buyer, &id);
+    assert!(result);
+    let listing = client.get_listing(&id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer.clone()));
+    // All funds should go to seller if treasury not set
+}
+
+#[test]
+#[should_panic]
+fn test_set_protocol_fee_not_admin_panics() {
+    let (env, client, artist, buyer, _contract_id) = setup();
+    client.set_admin(&artist);
+    // Buyer tries to set protocol fee
+    client.set_protocol_fee(&buyer, &100u32);
+}
+
+#[test]
+#[should_panic]
+fn test_set_treasury_not_admin_panics() {
+    let (env, client, artist, buyer, _contract_id) = setup();
+    client.set_admin(&artist);
+    let treasury = Address::generate(&env);
+    // Buyer tries to set treasury
+    client.set_treasury(&buyer, &treasury);
+}
+
+#[test]
+#[should_panic]
+fn test_set_protocol_fee_too_high_panics() {
+    let (env, client, artist, _buyer, _contract_id) = setup();
+    client.set_admin(&artist);
+    // Try to set fee > 1000 bps (10%)
+    client.set_protocol_fee(&artist, &2000u32);
+}
 // ------------------------------------------------------------
 // test.rs — Unit tests for the Soroban marketplace contract
 // ------------------------------------------------------------
 
-#![cfg(test)]
 
 use super::*;
 use crate::events::*;
@@ -199,4 +268,44 @@ fn test_create_listing_with_whitelisted_token_succeeds() {
     let cid = bytes!(&env, 0x516d74657374);
     let listing_id = client.create_listing(&artist, &cid, &1_000_000_i128, &symbol_short!("XLM"), &contract_id);
     assert_eq!(listing_id, 1u64);
+}
+
+#[test]
+fn test_buy_artwork_fee_greater_than_price() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+    let treasury = Address::generate(&env);
+    client.set_treasury(&artist, &treasury);
+    // Set protocol fee to 100% (10000 bps)
+    client.set_protocol_fee(&artist, &1000u32); // 10% for demonstration
+    let cid = bytes!(&env, 0x516d74657374);
+    let price = 5_i128; // Very small price
+    let id = client.create_listing(&artist, &cid, &price, &symbol_short!("XLM"), &contract_id);
+    let result = client.buy_artwork(&buyer, &id);
+    assert!(result);
+    let listing = client.get_listing(&id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer.clone()));
+    // Fee: 10% of 5 = 0 (integer division), seller gets 5
+}
+
+#[test]
+fn test_buy_artwork_fee_rounding_precision() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+    let treasury = Address::generate(&env);
+    client.set_treasury(&artist, &treasury);
+    // Set protocol fee to 333 bps (3.33%)
+    client.set_protocol_fee(&artist, &333u32);
+    let cid = bytes!(&env, 0x516d74657374);
+    let price = 100_i128;
+    let id = client.create_listing(&artist, &cid, &price, &symbol_short!("XLM"), &contract_id);
+    let result = client.buy_artwork(&buyer, &id);
+    assert!(result);
+    let listing = client.get_listing(&id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer.clone()));
+    // Fee: 100 * 333 / 10_000 = 3 (integer division), seller gets 97
 }

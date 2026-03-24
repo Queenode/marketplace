@@ -1,3 +1,61 @@
+// Helper to get admin address from storage
+fn get_admin(e: &Env) -> Option<Address> {
+    use crate::storage::DataKey;
+    e.storage().persistent().get::<_, Address>(&DataKey::Admin)
+}
+
+// Admin-only: Set the treasury address
+fn set_treasury_internal(e: &Env, admin: &Address, treasury: &Address) {
+    admin.require_auth();
+    let stored_admin = get_admin(e).expect("admin not set");
+    if admin != &stored_admin {
+        panic!("Only admin can set treasury");
+    }
+    crate::storage::set_treasury_storage(e, treasury);
+}
+
+// Anyone can view the treasury address
+fn get_treasury_internal(e: &Env) -> Option<Address> {
+    crate::storage::get_treasury_storage(e)
+}
+
+// Admin-only: Set the protocol fee (in basis points)
+fn set_protocol_fee_internal(e: &Env, admin: &Address, bps: u32) {
+    admin.require_auth();
+    let stored_admin = get_admin(e).expect("admin not set");
+    if admin != &stored_admin {
+        panic!("Only admin can set protocol fee");
+    }
+    if bps > 1000 {
+        panic!("Fee too high");
+    }
+    crate::storage::set_protocol_fee_bps_storage(e, bps);
+}
+
+// Anyone can view the protocol fee (in basis points)
+fn get_protocol_fee_internal(e: &Env) -> Option<u32> {
+    crate::storage::get_protocol_fee_bps_storage(e)
+}
+// Expose as contract methods
+#[no_mangle]
+pub fn set_treasury(e: Env, admin: Address, treasury: Address) {
+    set_treasury_internal(&e, &admin, &treasury);
+}
+
+#[no_mangle]
+pub fn get_treasury(e: Env) -> Option<Address> {
+    get_treasury_internal(&e)
+}
+
+#[no_mangle]
+pub fn set_protocol_fee(e: Env, admin: Address, bps: u32) {
+    set_protocol_fee_internal(&e, &admin, bps);
+}
+
+#[no_mangle]
+pub fn get_protocol_fee(e: Env) -> Option<u32> {
+    get_protocol_fee_internal(&e)
+}
 use soroban_sdk::Map;
 // ------------------------------------------------------------
 // contract.rs — Afristore Marketplace contract implementation
@@ -27,6 +85,38 @@ pub struct MarketplaceContract;
 
 #[contractimpl]
 impl MarketplaceContract {
+    /// Admin-only: Set the treasury address
+    pub fn set_treasury(env: Env, admin: Address, treasury: Address) {
+        admin.require_auth();
+        let stored_admin = get_admin(&env).expect("admin not set");
+        if admin != stored_admin {
+            panic_with_error!(&env, MarketplaceError::Unauthorized);
+        }
+    crate::storage::set_treasury_storage(&env, &treasury);
+    }
+
+    /// Anyone can view the treasury address
+    pub fn get_treasury(env: Env) -> Option<Address> {
+    crate::storage::get_treasury_storage(&env)
+    }
+
+    /// Admin-only: Set the protocol fee (in basis points)
+    pub fn set_protocol_fee(env: Env, admin: Address, bps: u32) {
+        admin.require_auth();
+        let stored_admin = get_admin(&env).expect("admin not set");
+        if admin != stored_admin {
+            panic_with_error!(&env, MarketplaceError::Unauthorized);
+        }
+        if bps > 1000 {
+            panic_with_error!(&env, MarketplaceError::InvalidPrice); // Reuse error for now
+        }
+    crate::storage::set_protocol_fee_bps_storage(&env, bps);
+    }
+
+    /// Anyone can view the protocol fee (in basis points)
+    pub fn get_protocol_fee(env: Env) -> Option<u32> {
+    crate::storage::get_protocol_fee_bps_storage(&env)
+    }
     // ── Admin/Whitelist Management ─────────────────────────
 
     /// Set the admin address (can only be set once)
@@ -155,22 +245,37 @@ impl MarketplaceContract {
             panic_with_error!(&env, MarketplaceError::CannotBuyOwnListing);
         }
 
-        // Transfer payment: buyer → this contract → artist.
-        // In unit tests, native token contract state is not available in the host
-        // by default, so we skip transfer calls and validate state transitions.
+        // Transfer payment: buyer → this contract → artist/treasury.
         #[cfg(not(test))]
         {
-            let token = TokenClient::new(&env, &Self::xlm_token_address(&env));
-
+            let token = TokenClient::new(&env, &listing.token);
+            // Buyer pays contract
             token.transfer(&buyer, &env.current_contract_address(), &listing.price);
-            token.transfer(&env.current_contract_address(), &listing.artist, &listing.price);
+
+            let protocol_fee_bps = get_protocol_fee_bps(&env).unwrap_or(0);
+            let treasury = get_treasury(&env);
+            if protocol_fee_bps > 0 {
+                let fee = listing.price * protocol_fee_bps as i128 / 10_000;
+                let seller_amount = listing.price - fee;
+                if let Some(treasury_addr) = treasury {
+                    // Send fee to treasury
+                    token.transfer(&env.current_contract_address(), &treasury_addr, &fee);
+                    // Send remainder to seller
+                    token.transfer(&env.current_contract_address(), &listing.artist, &seller_amount);
+                } else {
+                    // If no treasury set, send all to seller
+                    token.transfer(&env.current_contract_address(), &listing.artist, &listing.price);
+                }
+            } else {
+                // No protocol fee, send all to seller
+                token.transfer(&env.current_contract_address(), &listing.artist, &listing.price);
+            }
         }
 
         // Update listing state.
         listing.status = ListingStatus::Sold;
         listing.owner = Some(buyer.clone());
         save_listing(&env, &listing);
-
 
         ArtworkSoldEvent {
             listing_id,
