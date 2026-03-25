@@ -61,7 +61,7 @@ mod tests {
 
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
-use crate::types::Listing;
+use crate::types::{Listing, Offer};
 
 /// Storage key variants for the marketplace contract.
 #[contracttype]
@@ -87,6 +87,14 @@ pub enum DataKey {
     Auction(u64),
     /// Stores a `Vec<u64>` of auction IDs owned by an artist.
     ArtistAuctions(Address),
+    /// Stores the global offer counter (u64).
+    OfferCount,
+    /// Stores a single `Offer` by its ID.
+    Offer(u64),
+    /// Stores a `Vec<u64>` of offer IDs for a listing.
+    ListingOffers(u64),
+    /// Stores a `Vec<u64>` of offer IDs made by an offerer.
+    OffererOffers(Address),
 }
 
 // ── Bump amounts (ledger sequences) ─────────────────────────
@@ -182,7 +190,10 @@ pub fn save_auction(env: &Env, auction: &crate::types::Auction) {
 
 pub fn load_auction(env: &Env, auction_id: u64) -> Option<crate::types::Auction> {
     let key = DataKey::Auction(auction_id);
-    let result = env.storage().persistent().get::<DataKey, crate::types::Auction>(&key);
+    let result = env
+        .storage()
+        .persistent()
+        .get::<DataKey, crate::types::Auction>(&key);
     if result.is_some() {
         env.storage()
             .persistent()
@@ -210,7 +221,6 @@ pub fn add_artist_auction_id(env: &Env, artist: &Address, auction_id: u64) {
         .persistent()
         .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
 }
-
 
 pub fn add_artist_listing_id(env: &Env, artist: &Address, listing_id: u64) {
     let key = DataKey::ArtistListings(artist.clone());
@@ -240,4 +250,81 @@ pub fn set_protocol_fee_bps_storage(env: &Env, bps: u32) {
 
 pub fn get_protocol_fee_bps_storage(env: &Env) -> Option<u32> {
     env.storage().persistent().get(&DataKey::ProtocolFeeBps)
+}
+
+// ── Offer counter helpers ───────────────────────────────────────
+
+pub fn get_offer_count(env: &Env) -> u64 {
+    env.storage()
+        .persistent()
+        .get::<DataKey, u64>(&DataKey::OfferCount)
+        .unwrap_or(0)
+}
+
+pub fn increment_offer_count(env: &Env) -> u64 {
+    let count = get_offer_count(env) + 1;
+    env.storage().persistent().set(&DataKey::OfferCount, &count);
+    env.storage().persistent().extend_ttl(
+        &DataKey::OfferCount,
+        LEDGER_TTL_THRESHOLD,
+        LEDGER_TTL_BUMP,
+    );
+    count
+}
+
+// ── Offer CRUD ─────────────────────────────────────────────
+
+pub fn save_offer(env: &Env, offer: &Offer) {
+    let key = DataKey::Offer(offer.offer_id);
+    env.storage().persistent().set(&key, offer);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+}
+
+pub fn load_offer(env: &Env, offer_id: u64) -> Option<Offer> {
+    let key = DataKey::Offer(offer_id);
+    let result = env.storage().persistent().get::<DataKey, Offer>(&key);
+    if result.is_some() {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+    }
+    result
+}
+
+// ── Listing offers index ─────────────────────────────────────
+
+pub fn load_listing_offers(env: &Env, listing_id: u64) -> Vec<u64> {
+    let key = DataKey::ListingOffers(listing_id);
+    env.storage()
+        .persistent()
+        .get::<DataKey, Vec<u64>>(&key)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn save_listing_offers(env: &Env, listing_id: u64, ids: &Vec<u64>) {
+    let key = DataKey::ListingOffers(listing_id);
+    env.storage().persistent().set(&key, ids);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+}
+
+// ── Offerer offers index ─────────────────────────────────────
+
+pub fn load_offerer_offers(env: &Env, offerer: &Address) -> Vec<u64> {
+    let key = DataKey::OffererOffers(offerer.clone());
+    env.storage()
+        .persistent()
+        .get::<DataKey, Vec<u64>>(&key)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn save_offerer_offers(env: &Env, offerer: &Address, ids: &Vec<u64>) {
+    let key = DataKey::OffererOffers(offerer.clone());
+    env.storage().persistent().set(&key, ids);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
 }

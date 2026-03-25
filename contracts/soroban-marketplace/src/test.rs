@@ -1,6 +1,8 @@
 use super::*;
-use crate::types::{Recipient, ListingStatus};
-use soroban_sdk::{bytes, symbol_short, testutils::Address as _, testutils::Ledger, vec, Address, Env};
+use crate::types::{ListingStatus, OfferStatus, Recipient};
+use soroban_sdk::{
+    bytes, symbol_short, testutils::Address as _, testutils::Ledger, vec, Address, Env,
+};
 
 /// Helper — deploy the contract and return (env, client, artist, buyer, contract_id).
 fn setup() -> (
@@ -826,4 +828,174 @@ fn test_outbid_refund_logic_check() {
     let auction = client.get_auction(&id);
     assert_eq!(auction.highest_bid, 2_000_000);
     assert_eq!(auction.highest_bidder, Some(buyer2));
+}
+
+// ── Offer Tests ─────────────────────────────────────────────
+
+/// Helper to create a listing and return its ID.
+fn create_test_listing(
+    env: &Env,
+    client: &MarketplaceContractClient,
+    artist: &Address,
+    contract_id: &Address,
+) -> u64 {
+    let cid = bytes!(env, 0x516d74657374);
+    let price = 10_000_000_i128;
+    client.create_listing(
+        artist,
+        &cid,
+        &price,
+        &symbol_short!("XLM"),
+        contract_id,
+        &0u32,
+        &valid_recipients(env, artist),
+    )
+}
+
+#[test]
+fn test_make_offer_success() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+
+    // Any token is allowed for offers (bypass whitelist)
+    let offer_token = Address::generate(&env);
+    let offer_id = client.make_offer(&buyer, &listing_id, &5_000_000_i128, &offer_token);
+
+    assert_eq!(offer_id, 1);
+
+    let offer = client.get_offer(&offer_id);
+    assert_eq!(offer.offer_id, 1u64);
+    assert_eq!(offer.listing_id, listing_id);
+    assert_eq!(offer.offerer, buyer);
+    assert_eq!(offer.amount, 5_000_000_i128);
+    assert_eq!(offer.token, offer_token);
+    assert_eq!(offer.status, OfferStatus::Pending);
+
+    // Check indexes
+    let listing_offers = client.get_listing_offers(&listing_id);
+    assert_eq!(listing_offers.len(), 1);
+    assert_eq!(listing_offers.get(0).unwrap(), 1u64);
+
+    let offerer_offers = client.get_offerer_offers(&buyer);
+    assert_eq!(offerer_offers.len(), 1);
+    assert_eq!(offerer_offers.get(0).unwrap(), 1u64);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #17)")]
+fn test_make_offer_on_own_listing_fails() {
+    let (env, client, artist, _buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+    let offer_token = Address::generate(&env);
+
+    // Artist tries to offer on their own listing
+    client.make_offer(&artist, &listing_id, &5_000_000_i128, &offer_token);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #3)")]
+fn test_make_offer_on_nonexistent_listing_fails() {
+    let (env, client, artist, buyer, _contract_id) = setup();
+    client.set_admin(&artist);
+
+    let offer_token = Address::generate(&env);
+    client.make_offer(&buyer, &999u64, &5_000_000_i128, &offer_token);
+}
+
+#[test]
+fn test_withdraw_offer_success() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+    let offer_token = Address::generate(&env);
+    let offer_id = client.make_offer(&buyer, &listing_id, &5_000_000_i128, &offer_token);
+
+    client.withdraw_offer(&buyer, &offer_id);
+
+    let offer = client.get_offer(&offer_id);
+    assert_eq!(offer.status, OfferStatus::Withdrawn);
+}
+
+#[test]
+fn test_accept_offer_success() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+    let offer_token = Address::generate(&env);
+    let offer_id = client.make_offer(&buyer, &listing_id, &5_000_000_i128, &offer_token);
+
+    client.accept_offer(&artist, &offer_id);
+
+    let offer = client.get_offer(&offer_id);
+    assert_eq!(offer.status, OfferStatus::Accepted);
+
+    // Listing should be sold with buyer as owner
+    let listing = client.get_listing(&listing_id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer.clone()));
+}
+
+#[test]
+fn test_reject_offer_success() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+    let offer_token = Address::generate(&env);
+    let offer_id = client.make_offer(&buyer, &listing_id, &5_000_000_i128, &offer_token);
+
+    client.reject_offer(&artist, &offer_id);
+
+    let offer = client.get_offer(&offer_id);
+    assert_eq!(offer.status, OfferStatus::Rejected);
+
+    // Listing should still be active
+    let listing = client.get_listing(&listing_id);
+    assert_eq!(listing.status, ListingStatus::Active);
+}
+
+#[test]
+fn test_accept_offer_rejects_others() {
+    let (env, client, artist, buyer, contract_id) = setup();
+    let buyer2 = Address::generate(&env);
+    let buyer3 = Address::generate(&env);
+    client.set_admin(&artist);
+    client.add_token_to_whitelist(&contract_id);
+
+    let listing_id = create_test_listing(&env, &client, &artist, &contract_id);
+    let offer_token = Address::generate(&env);
+
+    let offer_id_1 = client.make_offer(&buyer, &listing_id, &5_000_000_i128, &offer_token);
+    let offer_id_2 = client.make_offer(&buyer2, &listing_id, &7_000_000_i128, &offer_token);
+    let offer_id_3 = client.make_offer(&buyer3, &listing_id, &3_000_000_i128, &offer_token);
+
+    // Accept offer 2
+    client.accept_offer(&artist, &offer_id_2);
+
+    // Offer 2 should be accepted
+    let offer2 = client.get_offer(&offer_id_2);
+    assert_eq!(offer2.status, OfferStatus::Accepted);
+
+    // Offers 1 and 3 should be rejected (refunded)
+    let offer1 = client.get_offer(&offer_id_1);
+    assert_eq!(offer1.status, OfferStatus::Rejected);
+
+    let offer3 = client.get_offer(&offer_id_3);
+    assert_eq!(offer3.status, OfferStatus::Rejected);
+
+    // Listing should be sold with buyer2 as owner
+    let listing = client.get_listing(&listing_id);
+    assert_eq!(listing.status, ListingStatus::Sold);
+    assert_eq!(listing.owner, Some(buyer2.clone()));
 }

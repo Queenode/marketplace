@@ -14,9 +14,14 @@ use crate::{
     storage::{
         add_artist_auction_id, add_artist_listing_id, get_artist_auction_ids,
         get_artist_listing_ids, get_listing_count, increment_auction_count,
-        increment_listing_count, load_auction, load_listing, save_auction, save_listing,
+        increment_listing_count, increment_offer_count, load_auction, load_listing,
+        load_listing_offers, load_offer, load_offerer_offers, save_auction, save_listing,
+        save_listing_offers, save_offer, save_offerer_offers,
     },
-    types::{Auction, AuctionStatus, Listing, ListingStatus, MarketplaceError, Recipient},
+    types::{
+        Auction, AuctionStatus, Listing, ListingStatus, MarketplaceError, Offer, OfferStatus,
+        Recipient,
+    },
 };
 
 // ────────────────────────────────────────────────────────────
@@ -550,7 +555,6 @@ impl MarketplaceContract {
         }
     }
 
-
     // ── get_listing ──────────────────────────────────────────
     /// Returns the full Listing struct for a given ID.
     /// Panics with `ListingNotFound` if the ID does not exist.
@@ -584,5 +588,253 @@ impl MarketplaceContract {
             env,
             b"CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
         ))
+    }
+
+    // ── Offer methods ───────────────────────────────────────────
+
+    /// Make an offer on an active listing. Any token is accepted (bypasses whitelist).
+    /// Tokens are locked in the contract until the offer is resolved.
+    pub fn make_offer(
+        env: Env,
+        offerer: Address,
+        listing_id: u64,
+        amount: i128,
+        token: Address,
+    ) -> Result<u64, MarketplaceError> {
+        offerer.require_auth();
+
+        let listing = load_listing(&env, listing_id).ok_or(MarketplaceError::ListingNotFound)?;
+
+        if listing.status != ListingStatus::Active {
+            return Err(MarketplaceError::ListingNotActive);
+        }
+        if listing.artist == offerer {
+            return Err(MarketplaceError::CannotOfferOwnListing);
+        }
+        if amount <= 0 {
+            return Err(MarketplaceError::InsufficientOfferAmount);
+        }
+
+        // Lock tokens: transfer from offerer to contract
+        #[cfg(not(test))]
+        {
+            let token_client = TokenClient::new(&env, &token);
+            token_client.transfer(&offerer, &env.current_contract_address(), &amount);
+        }
+
+        let offer_id = increment_offer_count(&env);
+
+        let offer = Offer {
+            offer_id,
+            listing_id,
+            offerer: offerer.clone(),
+            amount,
+            token: token.clone(),
+            status: OfferStatus::Pending,
+            created_at: env.ledger().sequence(),
+        };
+        save_offer(&env, &offer);
+
+        // Add to listing offers index
+        let mut listing_offers = load_listing_offers(&env, listing_id);
+        listing_offers.push_back(offer_id);
+        save_listing_offers(&env, listing_id, &listing_offers);
+
+        // Add to offerer offers index
+        let mut offerer_offers = load_offerer_offers(&env, &offerer);
+        offerer_offers.push_back(offer_id);
+        save_offerer_offers(&env, &offerer, &offerer_offers);
+
+        OfferMadeEvent {
+            offer_id,
+            listing_id,
+            offerer,
+            amount,
+            token,
+        }
+        .publish(&env);
+
+        Ok(offer_id)
+    }
+
+    /// Withdraw a pending offer. Only the offerer can withdraw. Refunds locked tokens.
+    pub fn withdraw_offer(
+        env: Env,
+        offerer: Address,
+        offer_id: u64,
+    ) -> Result<(), MarketplaceError> {
+        offerer.require_auth();
+
+        let mut offer = load_offer(&env, offer_id).ok_or(MarketplaceError::OfferNotFound)?;
+
+        if offer.offerer != offerer {
+            return Err(MarketplaceError::Unauthorized);
+        }
+        if offer.status != OfferStatus::Pending {
+            return Err(MarketplaceError::OfferNotPending);
+        }
+
+        // Refund tokens
+        #[cfg(not(test))]
+        {
+            let token_client = TokenClient::new(&env, &offer.token);
+            token_client.transfer(&env.current_contract_address(), &offerer, &offer.amount);
+        }
+
+        offer.status = OfferStatus::Withdrawn;
+        save_offer(&env, &offer);
+
+        OfferWithdrawnEvent {
+            offer_id,
+            listing_id: offer.listing_id,
+            offerer,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Accept a pending offer. Only the listing owner/artist can accept.
+    /// Executes the trade: distributes payout, marks listing as Sold,
+    /// and rejects all other pending offers on the same listing (refunding them).
+    pub fn accept_offer(env: Env, owner: Address, offer_id: u64) -> Result<(), MarketplaceError> {
+        owner.require_auth();
+
+        let mut offer = load_offer(&env, offer_id).ok_or(MarketplaceError::OfferNotFound)?;
+
+        if offer.status != OfferStatus::Pending {
+            return Err(MarketplaceError::OfferNotPending);
+        }
+
+        let mut listing =
+            load_listing(&env, offer.listing_id).ok_or(MarketplaceError::ListingNotFound)?;
+
+        if listing.artist != owner {
+            return Err(MarketplaceError::Unauthorized);
+        }
+
+        // Execute trade: distribute payout (funds already locked in contract)
+        #[cfg(not(test))]
+        {
+            Self::distribute_payout(
+                &env,
+                &offer.token,
+                offer.amount,
+                &listing.original_creator,
+                listing.royalty_bps,
+                &listing.artist,
+                &listing.recipients,
+                &offer.offerer,
+                false, // funds already locked in contract
+            );
+        }
+
+        // Mark offer as accepted
+        offer.status = OfferStatus::Accepted;
+        save_offer(&env, &offer);
+
+        // Mark listing as sold
+        listing.status = ListingStatus::Sold;
+        listing.owner = Some(offer.offerer.clone());
+        save_listing(&env, &listing);
+
+        OfferAcceptedEvent {
+            offer_id,
+            listing_id: offer.listing_id,
+            offerer: offer.offerer.clone(),
+            amount: offer.amount,
+        }
+        .publish(&env);
+
+        // Reject all other pending offers on the same listing
+        let listing_offers = load_listing_offers(&env, offer.listing_id);
+        for i in 0..listing_offers.len() {
+            let other_offer_id = listing_offers.get(i).unwrap();
+            if other_offer_id == offer_id {
+                continue;
+            }
+            if let Some(mut other_offer) = load_offer(&env, other_offer_id) {
+                if other_offer.status == OfferStatus::Pending {
+                    // Refund tokens
+                    #[cfg(not(test))]
+                    {
+                        let token_client = TokenClient::new(&env, &other_offer.token);
+                        token_client.transfer(
+                            &env.current_contract_address(),
+                            &other_offer.offerer,
+                            &other_offer.amount,
+                        );
+                    }
+
+                    other_offer.status = OfferStatus::Rejected;
+                    save_offer(&env, &other_offer);
+
+                    OfferRejectedEvent {
+                        offer_id: other_offer_id,
+                        listing_id: other_offer.listing_id,
+                        offerer: other_offer.offerer,
+                    }
+                    .publish(&env);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reject a pending offer. Only the listing owner/artist can reject. Refunds locked tokens.
+    pub fn reject_offer(env: Env, owner: Address, offer_id: u64) -> Result<(), MarketplaceError> {
+        owner.require_auth();
+
+        let mut offer = load_offer(&env, offer_id).ok_or(MarketplaceError::OfferNotFound)?;
+
+        if offer.status != OfferStatus::Pending {
+            return Err(MarketplaceError::OfferNotPending);
+        }
+
+        let listing =
+            load_listing(&env, offer.listing_id).ok_or(MarketplaceError::ListingNotFound)?;
+
+        if listing.artist != owner {
+            return Err(MarketplaceError::Unauthorized);
+        }
+
+        // Refund tokens
+        #[cfg(not(test))]
+        {
+            let token_client = TokenClient::new(&env, &offer.token);
+            token_client.transfer(
+                &env.current_contract_address(),
+                &offer.offerer,
+                &offer.amount,
+            );
+        }
+
+        offer.status = OfferStatus::Rejected;
+        save_offer(&env, &offer);
+
+        OfferRejectedEvent {
+            offer_id,
+            listing_id: offer.listing_id,
+            offerer: offer.offerer,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Get an offer by ID.
+    pub fn get_offer(env: Env, offer_id: u64) -> Result<Offer, MarketplaceError> {
+        load_offer(&env, offer_id).ok_or(MarketplaceError::OfferNotFound)
+    }
+
+    /// Get all offer IDs for a listing.
+    pub fn get_listing_offers(env: Env, listing_id: u64) -> Vec<u64> {
+        load_listing_offers(&env, listing_id)
+    }
+
+    /// Get all offer IDs made by an offerer.
+    pub fn get_offerer_offers(env: Env, offerer: Address) -> Vec<u64> {
+        load_offerer_offers(&env, &offerer)
     }
 }

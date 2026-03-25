@@ -112,4 +112,63 @@ impl AuctionFinalizedEvent {
     }
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OfferMadeEvent {
+    pub offer_id: u64,
+    pub listing_id: u64,
+    pub offerer: Address,
+    pub amount: i128,
+    pub token: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OfferAcceptedEvent {
+    pub offer_id: u64,
+    pub listing_id: u64,
+    pub offerer: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OfferRejectedEvent {
+    pub offer_id: u64,
+    pub listing_id: u64,
+    pub offerer: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OfferWithdrawnEvent {
+    pub offer_id: u64,
+    pub listing_id: u64,
+    pub offerer: Address,
+}
+
+impl OfferMadeEvent {
+    pub fn publish(self, env: &Env) {
+        env.events().publish((OFFER_MADE,), self);
+    }
+}
+
+impl OfferAcceptedEvent {
+    pub fn publish(self, env: &Env) {
+        env.events().publish((OFFER_ACCEPTED,), self);
+    }
+}
+
+impl OfferRejectedEvent {
+    pub fn publish(self, env: &Env) {
+        env.events().publish((OFFER_REJECTED,), self);
+    }
+}
+
+impl OfferWithdrawnEvent {
+    pub fn publish(self, env: &Env) {
+        env.events().publish((OFFER_WITHDRAWN,), self);
+    }
+}
+
 // End of events
