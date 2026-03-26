@@ -12,9 +12,6 @@ import { useMarketplace } from "@/hooks/useMarketplace";
 import { Listing, stroopsToXlm } from "@/lib/contract";
 import { ListingCard } from "@/components/ListingCard";
 import {
-  Search,
-  SlidersHorizontal,
-  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Package,
@@ -22,20 +19,10 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
+import { SearchFilter, Filters, StatusFilter, SortOption } from "@/components/SearchFilter";
 import { fetchMetadata, ArtworkMetadata } from "@/lib/ipfs";
 
 // ── Types ────────────────────────────────────────────────────
-
-type StatusFilter = "All" | "Active" | "Sold" | "Cancelled";
-type SortOption = "newest" | "oldest" | "price-low" | "price-high";
-
-const STATUS_FILTERS: StatusFilter[] = ["All", "Active", "Sold", "Cancelled"];
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "newest", label: "Newest First" },
-  { value: "oldest", label: "Oldest First" },
-  { value: "price-low", label: "Price: Low to High" },
-  { value: "price-high", label: "Price: High to Low" },
-];
 
 const PAGE_SIZE = 12;
 
@@ -62,9 +49,15 @@ async function getCachedMetadata(
 export default function ExplorePage() {
   const { listings, isLoading, error, refresh } = useMarketplace();
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [filters, setFilters] = useState<Filters>({
+    search: "",
+    status: "All",
+    category: "All",
+    minPrice: "",
+    maxPrice: "",
+    sort: "newest",
+  });
+
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -99,7 +92,7 @@ export default function ExplorePage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, sort]);
+  }, [filters]);
 
   // ── Filtering + Sorting ──────────────────────────────────
 
@@ -107,13 +100,31 @@ export default function ExplorePage() {
     let result = [...listings];
 
     // Status filter
-    if (statusFilter !== "All") {
-      result = result.filter((l) => l.status === statusFilter);
+    if (filters.status !== "All") {
+      result = result.filter((l) => l.status === filters.status);
+    }
+
+    // Category filter
+    if (filters.category !== "All") {
+      result = result.filter((l) => {
+        const meta = metadataMap.get(l.metadata_cid);
+        return meta?.category === filters.category;
+      });
+    }
+
+    // Price range filter
+    if (filters.minPrice !== "") {
+      const min = parseFloat(filters.minPrice);
+      result = result.filter((l) => parseFloat(stroopsToXlm(l.price)) >= min);
+    }
+    if (filters.maxPrice !== "") {
+      const max = parseFloat(filters.maxPrice);
+      result = result.filter((l) => parseFloat(stroopsToXlm(l.price)) <= max);
     }
 
     // Search (matches title, artist address, or metadata artist name)
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
+    if (filters.search.trim()) {
+      const q = filters.search.toLowerCase().trim();
       result = result.filter((l) => {
         if (l.artist.toLowerCase().includes(q)) return true;
         if (l.metadata_cid.toLowerCase().includes(q)) return true;
@@ -121,12 +132,13 @@ export default function ExplorePage() {
         if (meta?.title?.toLowerCase().includes(q)) return true;
         if (meta?.artist?.toLowerCase().includes(q)) return true;
         if (meta?.description?.toLowerCase().includes(q)) return true;
+        if (meta?.category?.toLowerCase().includes(q)) return true;
         return false;
       });
     }
 
     // Sort
-    switch (sort) {
+    switch (filters.sort) {
       case "newest":
         result.sort((a, b) => b.created_at - a.created_at);
         break;
@@ -142,7 +154,7 @@ export default function ExplorePage() {
     }
 
     return result;
-  }, [listings, statusFilter, search, sort, metadataMap]);
+  }, [listings, filters, metadataMap]);
 
   // ── Pagination ───────────────────────────────────────────
 
@@ -168,136 +180,50 @@ export default function ExplorePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-midnight-900 pt-24 pb-12">
+      <div className="bg-midnight-900 pt-32 pb-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <h1 className="text-4xl font-display font-bold text-white">
-            Explore Artworks
-          </h1>
-          <p className="mt-2 text-lg text-white/60">
-            Discover and collect unique African art on the blockchain
-          </p>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-8">
+            <div className="space-y-4">
+              <h1 className="text-5xl font-display font-bold text-white tracking-tight">
+                Explore Artworks
+              </h1>
+              <p className="max-w-xl text-xl text-white/60 font-inter leading-relaxed">
+                Discover and collect unique African art on the blockchain
+              </p>
+            </div>
 
-          {/* Stats */}
-          <div className="mt-8 flex flex-wrap gap-6">
-            {[
-              { label: "Total Artworks", value: listings.length },
-              { label: "Active Listings", value: activeCnt },
-              { label: "Sold", value: soldCnt },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-center gap-3">
-                <span className="text-2xl font-bold text-brand-400">
-                  {value}
-                </span>
-                <span className="text-sm text-white/50">{label}</span>
-              </div>
-            ))}
+            {/* Stats */}
+            <div className="flex flex-wrap gap-8 md:gap-12">
+              {[
+                { label: "Total Art", value: listings.length },
+                { label: "Active", value: activeCnt },
+                { label: "Sold", value: soldCnt },
+              ].map(({ label, value }) => (
+                <div key={label} className="relative">
+                  <span className="text-3xl font-display font-bold text-white block">
+                    {value}
+                  </span>
+                  <span className="text-sm font-bold uppercase tracking-widest text-brand-500">
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Controls */}
-      <div className="sticky top-16 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-sm shadow-sm">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-              <input
-                type="text"
-                placeholder="Search by title, artist, or description..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-400/20 transition-all"
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Filter toggle (mobile) */}
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="sm:hidden flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50"
-              >
-                <SlidersHorizontal size={14} />
-                Filters
-              </button>
-
-              {/* Sort */}
-              <div className="relative">
-                <ArrowUpDown
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as SortOption)}
-                  className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-8 text-sm text-gray-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20 cursor-pointer"
-                >
-                  {SORT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Refresh */}
-              <button
-                onClick={refresh}
-                disabled={isLoading}
-                className="rounded-xl border border-gray-200 p-2.5 text-gray-500 hover:bg-gray-50 hover:text-brand-500 disabled:opacity-50 transition-all"
-                title="Refresh listings"
-              >
-                <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
-              </button>
-            </div>
-          </div>
-
-          {/* Status filter tabs */}
-          <div
-            className={`mt-4 flex flex-wrap gap-2 ${
-              showFilters ? "block" : "hidden sm:flex"
-            }`}
-          >
-            {STATUS_FILTERS.map((status) => {
-              const isActive = statusFilter === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
-                    isActive
-                      ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  {status}
-                  {status === "All" && (
-                    <span className="ml-1.5 text-xs opacity-70">
-                      ({listings.length})
-                    </span>
-                  )}
-                  {status === "Active" && (
-                    <span className="ml-1.5 text-xs opacity-70">
-                      ({activeCnt})
-                    </span>
-                  )}
-                  {status === "Sold" && (
-                    <span className="ml-1.5 text-xs opacity-70">
-                      ({soldCnt})
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <SearchFilter
+        filters={filters}
+        onFilterChange={(newFilters) => setFilters(prev => ({ ...prev, ...newFilters }))}
+        showFilters={showFilters}
+        setShowFilters={setShowFilters}
+        totalResults={filtered.length}
+      />
 
       {/* Content */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12">
         {/* Results count */}
         {!isLoading && !error && (
           <p className="mb-6 text-sm text-gray-500">
@@ -312,11 +238,11 @@ export default function ExplorePage() {
               {filtered.length}
             </span>{" "}
             {filtered.length === 1 ? "artwork" : "artworks"}
-            {search && (
+            {filters.search && (
               <span>
                 {" "}
                 matching &ldquo;
-                <span className="font-medium text-brand-600">{search}</span>
+                <span className="font-medium text-brand-600">{filters.search}</span>
                 &rdquo;
               </span>
             )}
@@ -374,15 +300,21 @@ export default function ExplorePage() {
               No artworks found
             </h3>
             <p className="mt-1 text-sm text-gray-500 max-w-sm text-center">
-              {search
+              {filters.search
                 ? "Try adjusting your search or filters to find what you are looking for."
                 : "No listings match the current filters. Check back soon for new artworks."}
             </p>
-            {(search || statusFilter !== "All") && (
+            {(filters.search || filters.status !== "All" || filters.category !== "All") && (
               <button
                 onClick={() => {
-                  setSearch("");
-                  setStatusFilter("All");
+                  setFilters({
+                    search: "",
+                    status: "All",
+                    category: "All",
+                    minPrice: "",
+                    maxPrice: "",
+                    sort: "newest",
+                  });
                 }}
                 className="mt-6 flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-bold text-white hover:bg-brand-600 transition-all"
               >

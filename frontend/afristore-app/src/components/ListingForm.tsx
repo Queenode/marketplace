@@ -15,6 +15,16 @@ import { Listing, stroopsToXlm } from "@/lib/contract";
 
 import { SUPPORTED_TOKENS, DEFAULT_TOKEN } from "@/config/tokens";
 
+export const ART_CATEGORIES = [
+  "Painting",
+  "Sculpture",
+  "Photography",
+  "Digital Art",
+  "Textile",
+  "Jewelry",
+  "Other",
+];
+
 interface ListingFormProps {
   listing?: Listing; // If provided, we are in EDIT mode
   onSuccess?: (listingId: number) => void;
@@ -34,6 +44,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
     description: "",
     artistName: "",
     year: new Date().getFullYear().toString(),
+    category: ART_CATEGORIES[0],
     price: 10,
     tokenAddress: DEFAULT_TOKEN.address,
   });
@@ -58,6 +69,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
             description: meta.description,
             artistName: meta.artist,
             year: meta.year,
+            category: meta.category || ART_CATEGORIES[0],
             price: parseFloat(stroopsToXlm(listing.price)),
             tokenAddress: listing.token,
           });
@@ -128,7 +140,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                     setSuccessId(null);
                     setPreview(null);
                     setSelectedFile(null);
-                    setForm({ title: "", description: "", artistName: "", year: new Date().getFullYear().toString(), price: 10, tokenAddress: DEFAULT_TOKEN.address });
+                    setForm({ title: "", description: "", artistName: "", year: new Date().getFullYear().toString(), category: ART_CATEGORIES[0], price: 10, tokenAddress: DEFAULT_TOKEN.address });
                 }}
                 className="flex-1 rounded-2xl bg-brand-500 px-6 py-4 text-lg font-bold text-white hover:bg-brand-600 shadow-lg shadow-brand-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 >
@@ -252,6 +264,24 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                     onChange={(e) => setForm({ ...form, year: e.target.value })}
                     className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
                 />
+                </div>
+
+                <div className="space-y-2">
+                    <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
+                        Category *
+                    </label>
+                    <select
+                        required
+                        value={form.category}
+                        onChange={(e) => setForm({ ...form, category: e.target.value })}
+                        className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
+                    >
+                        {ART_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                                {cat}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 <div className="space-y-2">
