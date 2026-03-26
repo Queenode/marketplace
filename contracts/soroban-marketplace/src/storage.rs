@@ -240,6 +240,37 @@ pub fn set_protocol_fee_bps_storage(env: &Env, bps: u32) {
         .set(&DataKey::ProtocolFeeBps, &bps);
 }
 
+
 pub fn get_protocol_fee_bps_storage(env: &Env) -> Option<u32> {
     env.storage().persistent().get(&DataKey::ProtocolFeeBps)
+}
+
+// ── Artist Revocation storage ─────────────────────────────
+
+pub fn set_artist_revocation_storage(env: &Env, artist: &Address) {
+    let key = DataKey::RevokedArtist(artist.clone());
+    env.storage().persistent().set(&key, &true);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+}
+
+pub fn remove_artist_revocation_storage(env: &Env, artist: &Address) {
+    let key = DataKey::RevokedArtist(artist.clone());
+    env.storage().persistent().remove(&key);
+}
+
+pub fn is_artist_revoked_storage(env: &Env, artist: &Address) -> bool {
+    let key = DataKey::RevokedArtist(artist.clone());
+    let revoked = env
+        .storage()
+        .persistent()
+        .get::<_, bool>(&key)
+        .unwrap_or(false);
+    if revoked {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+    }
+    revoked
 }

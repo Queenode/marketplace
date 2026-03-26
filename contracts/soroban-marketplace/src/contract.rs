@@ -117,9 +117,7 @@ impl MarketplaceContract {
     /// Revoke an artist's ability to create new listings/auctions.
     pub fn revoke_artist(env: Env, artist: Address) {
         Self::require_admin(&env);
-        env.storage()
-            .persistent()
-            .set(&crate::storage::DataKey::RevokedArtist(artist.clone()), &true);
+        crate::storage::set_artist_revocation_storage(&env, &artist);
         // Publish event
         env.events().publish((crate::events::ARTIST_REVOKED,), artist);
     }
@@ -127,19 +125,14 @@ impl MarketplaceContract {
     /// Reinstate a revoked artist.
     pub fn reinstate_artist(env: Env, artist: Address) {
         Self::require_admin(&env);
-        env.storage()
-            .persistent()
-            .remove(&crate::storage::DataKey::RevokedArtist(artist.clone()));
+        crate::storage::remove_artist_revocation_storage(&env, &artist);
         // Publish event
         env.events().publish((crate::events::ARTIST_REINSTATED,), artist);
     }
 
     /// Check if an artist is revoked.
     pub fn is_artist_revoked(env: Env, artist: Address) -> bool {
-        env.storage()
-            .persistent()
-            .get::<_, bool>(&crate::storage::DataKey::RevokedArtist(artist))
-            .unwrap_or(false)
+        crate::storage::is_artist_revoked_storage(&env, &artist)
     }
 
     /// Get admin address
