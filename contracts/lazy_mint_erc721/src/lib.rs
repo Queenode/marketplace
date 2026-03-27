@@ -18,12 +18,11 @@
 //! Accepts any Stellar Asset Contract (SAC) token.  Pass the SAC address for
 //! XLM or any USDC/custom asset.  Price = 0 means free mint.
 #![no_std]
+#![allow(clippy::too_many_arguments, deprecated)]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, symbol_short,
-    token::TokenClient,
-    xdr::ToXdr,
-    Address, Bytes, BytesN, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient,
+    xdr::ToXdr, Address, Bytes, BytesN, Env, String,
 };
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
@@ -32,15 +31,15 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
-    AlreadyInitialized   = 1,
-    NotInitialized       = 2,
-    NotOwner             = 3,
-    NotApproved          = 4,
-    TokenNotFound        = 5,
-    MaxSupplyReached     = 6,
-    VoucherExpired       = 7,
-    VoucherAlreadyUsed   = 8,
-    NotCreator           = 9,
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    NotOwner = 3,
+    NotApproved = 4,
+    TokenNotFound = 5,
+    MaxSupplyReached = 6,
+    VoucherExpired = 7,
+    VoucherAlreadyUsed = 8,
+    NotCreator = 9,
 }
 
 // ─── Data types ───────────────────────────────────────────────────────────────
@@ -53,12 +52,12 @@ pub enum Error {
 #[contracttype]
 #[derive(Clone)]
 pub struct MintVoucher {
-    pub token_id:    u64,
-    pub price:       i128,        // 0 = free
-    pub currency:    Address,     // SAC address (ignored when price == 0)
-    pub uri:         String,      // IPFS / HTTPS metadata URI
-    pub uri_hash:    BytesN<32>,  // sha256(uri bytes) — included in signature
-    pub valid_until: u64,         // ledger sequence; 0 = no expiry
+    pub token_id: u64,
+    pub price: i128,          // 0 = free
+    pub currency: Address,    // SAC address (ignored when price == 0)
+    pub uri: String,          // IPFS / HTTPS metadata URI
+    pub uri_hash: BytesN<32>, // sha256(uri bytes) — included in signature
+    pub valid_until: u64,     // ledger sequence; 0 = no expiry
 }
 
 /// Compact struct for the signed digest — only the fields that matter for
@@ -72,7 +71,7 @@ pub struct MintVoucher {
 pub enum DataKey {
     Initialized,
     Creator,
-    CreatorPubkey,   // BytesN<32>  ed25519 public key used to verify vouchers
+    CreatorPubkey, // BytesN<32>  ed25519 public key used to verify vouchers
     Name,
     Symbol,
     MaxSupply,
@@ -85,7 +84,7 @@ pub enum DataKey {
     Approved(u64),
     BalanceOf(Address),
     ApprovedForAll(Address, Address),
-    UsedVoucher(u64),  // token_id → bool
+    UsedVoucher(u64), // token_id → bool
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ impl LazyMint721 {
     pub fn initialize(
         env: Env,
         creator: Address,
-        creator_pubkey: BytesN<32>,  // ed25519 public key of creator wallet
+        creator_pubkey: BytesN<32>, // ed25519 public key of creator wallet
         name: String,
         symbol: String,
         max_supply: u64,
@@ -110,16 +109,24 @@ impl LazyMint721 {
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(Error::AlreadyInitialized);
         }
-        env.storage().instance().set(&DataKey::Initialized,     &true);
-        env.storage().instance().set(&DataKey::Creator,         &creator);
-        env.storage().instance().set(&DataKey::CreatorPubkey,   &creator_pubkey);
-        env.storage().instance().set(&DataKey::Name,            &name);
-        env.storage().instance().set(&DataKey::Symbol,          &symbol);
-        env.storage().instance().set(&DataKey::MaxSupply,       &max_supply);
-        env.storage().instance().set(&DataKey::NextTokenId,     &0u64);
-        env.storage().instance().set(&DataKey::TotalSupply,     &0u64);
-        env.storage().instance().set(&DataKey::RoyaltyBps,      &royalty_bps);
-        env.storage().instance().set(&DataKey::RoyaltyReceiver, &royalty_receiver);
+        env.storage().instance().set(&DataKey::Initialized, &true);
+        env.storage().instance().set(&DataKey::Creator, &creator);
+        env.storage()
+            .instance()
+            .set(&DataKey::CreatorPubkey, &creator_pubkey);
+        env.storage().instance().set(&DataKey::Name, &name);
+        env.storage().instance().set(&DataKey::Symbol, &symbol);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSupply, &max_supply);
+        env.storage().instance().set(&DataKey::NextTokenId, &0u64);
+        env.storage().instance().set(&DataKey::TotalSupply, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::RoyaltyBps, &royalty_bps);
+        env.storage()
+            .instance()
+            .set(&DataKey::RoyaltyReceiver, &royalty_receiver);
         env.storage().instance().extend_ttl(50_000, 100_000);
         Ok(())
     }
@@ -137,27 +144,39 @@ impl LazyMint721 {
         buyer.require_auth();
 
         // 1. Expiry check
-        if voucher.valid_until != 0
-            && env.ledger().sequence() > voucher.valid_until as u32
-        {
+        if voucher.valid_until != 0 && env.ledger().sequence() > voucher.valid_until as u32 {
             return Err(Error::VoucherExpired);
         }
 
         // 2. Replay check
-        if env.storage().persistent().has(&DataKey::UsedVoucher(voucher.token_id)) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::UsedVoucher(voucher.token_id))
+        {
             return Err(Error::VoucherAlreadyUsed);
         }
 
         // 3. Supply check
-        let next_id: u64 = env.storage().instance()
-            .get(&DataKey::NextTokenId).unwrap_or(0);
-        let max: u64 = env.storage().instance()
-            .get(&DataKey::MaxSupply).unwrap_or(u64::MAX);
-        if next_id >= max { return Err(Error::MaxSupplyReached); }
+        let next_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTokenId)
+            .unwrap_or(0);
+        let max: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSupply)
+            .unwrap_or(u64::MAX);
+        if next_id >= max {
+            return Err(Error::MaxSupplyReached);
+        }
 
         // 4. Signature verification
         //    Panics (fails the tx) if the signature does not match.
-        let pubkey: BytesN<32> = env.storage().instance()
+        let pubkey: BytesN<32> = env
+            .storage()
+            .instance()
             .get(&DataKey::CreatorPubkey)
             .ok_or(Error::NotInitialized)?;
         let digest = Self::_voucher_digest(&env, &voucher);
@@ -165,46 +184,66 @@ impl LazyMint721 {
 
         // 5. Payment  (skip when price == 0)
         if voucher.price > 0 {
-            let creator: Address = env.storage().instance()
-                .get(&DataKey::Creator).unwrap();
-            TokenClient::new(&env, &voucher.currency)
-                .transfer(&buyer, &creator, &voucher.price);
+            let creator: Address = env.storage().instance().get(&DataKey::Creator).unwrap();
+            TokenClient::new(&env, &voucher.currency).transfer(&buyer, &creator, &voucher.price);
         }
 
         // 6. Mint
         let token_id = voucher.token_id;
-        env.storage().persistent().set(&DataKey::Owner(token_id), &buyer);
-        env.storage().persistent().set(&DataKey::TokenUri(token_id), &voucher.uri);
-        env.storage().persistent().set(&DataKey::UsedVoucher(token_id), &true);
-        env.storage().persistent().extend_ttl(&DataKey::Owner(token_id),       50_000, 100_000);
-        env.storage().persistent().extend_ttl(&DataKey::TokenUri(token_id),    50_000, 100_000);
-        env.storage().persistent().extend_ttl(&DataKey::UsedVoucher(token_id), 50_000, 100_000);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Owner(token_id), &buyer);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenUri(token_id), &voucher.uri);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UsedVoucher(token_id), &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Owner(token_id), 50_000, 100_000);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::TokenUri(token_id), 50_000, 100_000);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::UsedVoucher(token_id), 50_000, 100_000);
 
-        let bal: u64 = env.storage().persistent()
-            .get(&DataKey::BalanceOf(buyer.clone())).unwrap_or(0);
-        env.storage().persistent().set(&DataKey::BalanceOf(buyer.clone()), &(bal + 1));
-        env.storage().persistent().extend_ttl(&DataKey::BalanceOf(buyer.clone()), 50_000, 100_000);
+        let bal: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BalanceOf(buyer.clone()))
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BalanceOf(buyer.clone()), &(bal + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::BalanceOf(buyer.clone()), 50_000, 100_000);
 
-        let supply: u64 = env.storage().instance()
-            .get(&DataKey::TotalSupply).unwrap_or(0);
-        env.storage().instance().set(&DataKey::TotalSupply, &(supply + 1));
+        let supply: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &(supply + 1));
         // NextTokenId tracks highest minted ID + 1 for supply cap enforcement
         if token_id >= next_id {
-            env.storage().instance().set(&DataKey::NextTokenId, &(token_id + 1));
+            env.storage()
+                .instance()
+                .set(&DataKey::NextTokenId, &(token_id + 1));
         }
 
-        env.events().publish((symbol_short!("redeem"), buyer), token_id);
+        env.events()
+            .publish((symbol_short!("redeem"), buyer), token_id);
         Ok(token_id)
     }
 
     // ── Transfers ─────────────────────────────────────────────────────────
 
-    pub fn transfer(
-        env: Env,
-        from: Address,
-        to: Address,
-        token_id: u64,
-    ) -> Result<(), Error> {
+    pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), Error> {
         from.require_auth();
         Self::_transfer(&env, &from, &to, token_id)
     }
@@ -218,7 +257,9 @@ impl LazyMint721 {
     ) -> Result<(), Error> {
         spender.require_auth();
         Self::_check_approved(&env, &spender, &from, token_id)?;
-        env.storage().persistent().remove(&DataKey::Approved(token_id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Approved(token_id));
         Self::_transfer(&env, &from, &to, token_id)
     }
 
@@ -226,26 +267,34 @@ impl LazyMint721 {
 
     pub fn approve(
         env: Env,
-        owner: Address,
+        spender: Address,
         approved: Address,
         token_id: u64,
     ) -> Result<(), Error> {
-        owner.require_auth();
-        let actual: Address = env.storage().persistent()
+        spender.require_auth();
+        let owner: Address = env
+            .storage()
+            .persistent()
             .get(&DataKey::Owner(token_id))
             .ok_or(Error::TokenNotFound)?;
-        if actual != owner { return Err(Error::NotOwner); }
-        env.storage().persistent().set(&DataKey::Approved(token_id), &approved);
-        env.storage().persistent().extend_ttl(&DataKey::Approved(token_id), 50_000, 100_000);
+
+        // [SECURITY] Allow owner or authorized operator to approve (#48)
+        if spender != owner
+            && !Self::is_approved_for_all(env.clone(), owner.clone(), spender.clone())
+        {
+            return Err(Error::NotApproved);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Approved(token_id), &approved);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Approved(token_id), 50_000, 100_000);
         Ok(())
     }
 
-    pub fn set_approval_for_all(
-        env: Env,
-        owner: Address,
-        operator: Address,
-        approved: bool,
-    ) {
+    pub fn set_approval_for_all(env: Env, owner: Address, operator: Address, approved: bool) {
         owner.require_auth();
         let key = DataKey::ApprovedForAll(owner.clone(), operator.clone());
         env.storage().persistent().set(&key, &approved);
@@ -255,28 +304,37 @@ impl LazyMint721 {
     // ── View functions ────────────────────────────────────────────────────
 
     pub fn owner_of(env: Env, token_id: u64) -> Result<Address, Error> {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&DataKey::Owner(token_id))
             .ok_or(Error::TokenNotFound)
     }
 
     pub fn token_uri(env: Env, token_id: u64) -> Result<String, Error> {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&DataKey::TokenUri(token_id))
             .ok_or(Error::TokenNotFound)
     }
 
     pub fn balance_of(env: Env, owner: Address) -> u64 {
-        env.storage().persistent()
-            .get(&DataKey::BalanceOf(owner)).unwrap_or(0)
+        env.storage()
+            .persistent()
+            .get(&DataKey::BalanceOf(owner))
+            .unwrap_or(0)
     }
 
     pub fn total_supply(env: Env) -> u64 {
-        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::TotalSupply)
+            .unwrap_or(0)
     }
 
     pub fn is_voucher_used(env: Env, token_id: u64) -> bool {
-        env.storage().persistent().has(&DataKey::UsedVoucher(token_id))
+        env.storage()
+            .persistent()
+            .has(&DataKey::UsedVoucher(token_id))
     }
 
     pub fn name(env: Env) -> String {
@@ -293,8 +351,14 @@ impl LazyMint721 {
 
     pub fn royalty_info(env: Env) -> (Address, u32) {
         (
-            env.storage().instance().get(&DataKey::RoyaltyReceiver).unwrap(),
-            env.storage().instance().get(&DataKey::RoyaltyBps).unwrap_or(0),
+            env.storage()
+                .instance()
+                .get(&DataKey::RoyaltyReceiver)
+                .unwrap(),
+            env.storage()
+                .instance()
+                .get(&DataKey::RoyaltyBps)
+                .unwrap_or(0),
         )
     }
 
@@ -303,7 +367,8 @@ impl LazyMint721 {
     }
 
     pub fn is_approved_for_all(env: Env, owner: Address, operator: Address) -> bool {
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get(&DataKey::ApprovedForAll(owner, operator))
             .unwrap_or(false)
     }
@@ -312,19 +377,25 @@ impl LazyMint721 {
 
     pub fn transfer_ownership(env: Env, new_creator: Address) -> Result<(), Error> {
         Self::only_creator(&env)?;
-        env.storage().instance().set(&DataKey::Creator, &new_creator);
+        env.storage()
+            .instance()
+            .set(&DataKey::Creator, &new_creator);
         Ok(())
     }
 
     pub fn update_creator_pubkey(env: Env, new_pubkey: BytesN<32>) -> Result<(), Error> {
         Self::only_creator(&env)?;
-        env.storage().instance().set(&DataKey::CreatorPubkey, &new_pubkey);
+        env.storage()
+            .instance()
+            .set(&DataKey::CreatorPubkey, &new_pubkey);
         Ok(())
     }
 
     pub fn update_royalty(env: Env, receiver: Address, bps: u32) -> Result<(), Error> {
         Self::only_creator(&env)?;
-        env.storage().instance().set(&DataKey::RoyaltyReceiver, &receiver);
+        env.storage()
+            .instance()
+            .set(&DataKey::RoyaltyReceiver, &receiver);
         env.storage().instance().set(&DataKey::RoyaltyBps, &bps);
         Ok(())
     }
@@ -332,7 +403,9 @@ impl LazyMint721 {
     // ── Private helpers ───────────────────────────────────────────────────
 
     fn only_creator(env: &Env) -> Result<Address, Error> {
-        let creator: Address = env.storage().instance()
+        let creator: Address = env
+            .storage()
+            .instance()
             .get(&DataKey::Creator)
             .ok_or(Error::NotInitialized)?;
         creator.require_auth();
@@ -349,6 +422,8 @@ impl LazyMint721 {
     ///  N   bytes  currency address XDR  (replay-binds to the payment token)
     fn _voucher_digest(env: &Env, v: &MintVoucher) -> Bytes {
         let mut raw = Bytes::new(env);
+        // [SECURITY] Bind signature to this contract instance to prevent replay (#49)
+        raw.append(&env.current_contract_address().to_xdr(env));
         raw.extend_from_array(&v.token_id.to_be_bytes());
         raw.extend_from_array(&v.price.to_be_bytes());
         raw.extend_from_array(&v.valid_until.to_be_bytes());
@@ -358,10 +433,19 @@ impl LazyMint721 {
     }
 
     fn _transfer(env: &Env, from: &Address, to: &Address, token_id: u64) -> Result<(), Error> {
-        let owner: Address = env.storage().persistent()
+        // [SECURITY] Clear single-token approval on every transfer (#50)
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Approved(token_id));
+
+        let owner: Address = env
+            .storage()
+            .persistent()
             .get(&DataKey::Owner(token_id))
             .ok_or(Error::TokenNotFound)?;
-        if owner != *from { return Err(Error::NotOwner); }
+        if owner != *from {
+            return Err(Error::NotOwner);
+        }
 
         let from_bal: u64 = env.storage().persistent()
             .get(&DataKey::BalanceOf(from.clone())).unwrap_or(0);
@@ -372,13 +456,31 @@ impl LazyMint721 {
 
         env.storage().persistent()
             .set(&DataKey::BalanceOf(from.clone()), &(from_bal - 1));
+        let from_bal: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BalanceOf(from.clone()))
+            .unwrap_or(1);
+        env.storage().persistent().set(
+            &DataKey::BalanceOf(from.clone()),
+            &(from_bal.saturating_sub(1)),
+        );
 
-        let to_bal: u64 = env.storage().persistent()
-            .get(&DataKey::BalanceOf(to.clone())).unwrap_or(0);
-        env.storage().persistent().set(&DataKey::BalanceOf(to.clone()), &(to_bal + 1));
-        env.storage().persistent().extend_ttl(&DataKey::BalanceOf(to.clone()), 50_000, 100_000);
+        let to_bal: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BalanceOf(to.clone()))
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BalanceOf(to.clone()), &(to_bal + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::BalanceOf(to.clone()), 50_000, 100_000);
 
-        env.storage().persistent().set(&DataKey::Owner(token_id), to);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Owner(token_id), to);
         env.events().publish(
             (symbol_short!("transfer"), from.clone()),
             (to.clone(), token_id),
@@ -397,7 +499,9 @@ impl LazyMint721 {
             .persistent()
             .get::<DataKey, Address>(&DataKey::Approved(token_id))
         {
-            if approved == *spender { return Ok(()); }
+            if approved == *spender {
+                return Ok(());
+            }
         }
         if env
             .storage()

@@ -1,9 +1,6 @@
 extern crate std;
 
-use soroban_sdk::{
-    testutils::Address as _,
-    Address, BytesN, Env, String,
-};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
 
 use crate::{CollectionKind, Launchpad, LaunchpadClient};
 
@@ -31,7 +28,7 @@ fn setup_launchpad(env: &Env) -> (LaunchpadClient<'_>, Address, Address, Address
     let fee_receiver = Address::generate(env);
     let creator = Address::generate(env);
 
-    client.initialize(&admin, &fee_receiver, &250u32);
+    client.initialize(&admin, &fee_receiver, &0u32);
 
     let wasm_normal_721_bytes = wasm_bytes("collection_nft_erc721");
     let wasm_normal_1155_bytes = wasm_bytes("collection_nft_erc1155");
@@ -69,9 +66,11 @@ fn deploys_normal_721_twice_with_unique_addresses() {
     let salt_a = BytesN::from_array(&env, &[10u8; 32]);
     let salt_b = BytesN::from_array(&env, &[11u8; 32]);
     let royalty_receiver = Address::generate(&env);
+    let currency = Address::generate(&env);
 
     let deployed_a = client.deploy_normal_721(
         &creator,
+        &currency,
         &String::from_str(&env, "Creator 721 A"),
         &String::from_str(&env, "C721A"),
         &1_000u64,
@@ -82,6 +81,7 @@ fn deploys_normal_721_twice_with_unique_addresses() {
 
     let deployed_b = client.deploy_normal_721(
         &creator,
+        &currency,
         &String::from_str(&env, "Creator 721 B"),
         &String::from_str(&env, "C721B"),
         &1_500u64,
@@ -95,8 +95,14 @@ fn deploys_normal_721_twice_with_unique_addresses() {
 
     let all = client.all_collections();
     assert_eq!(all.len(), 2);
-    assert!(matches!(all.get(0).unwrap().kind, CollectionKind::Normal721));
-    assert!(matches!(all.get(1).unwrap().kind, CollectionKind::Normal721));
+    assert!(matches!(
+        all.get(0).unwrap().kind,
+        CollectionKind::Normal721
+    ));
+    assert!(matches!(
+        all.get(1).unwrap().kind,
+        CollectionKind::Normal721
+    ));
 }
 
 #[test]
@@ -107,9 +113,11 @@ fn deploys_normal_1155_twice_with_unique_addresses() {
     let salt_a = BytesN::from_array(&env, &[20u8; 32]);
     let salt_b = BytesN::from_array(&env, &[21u8; 32]);
     let royalty_receiver = Address::generate(&env);
+    let currency = Address::generate(&env);
 
     let deployed_a = client.deploy_normal_1155(
         &creator,
+        &currency,
         &String::from_str(&env, "Creator 1155 A"),
         &500u32,
         &royalty_receiver,
@@ -118,6 +126,7 @@ fn deploys_normal_1155_twice_with_unique_addresses() {
 
     let deployed_b = client.deploy_normal_1155(
         &creator,
+        &currency,
         &String::from_str(&env, "Creator 1155 B"),
         &500u32,
         &royalty_receiver,
@@ -129,8 +138,14 @@ fn deploys_normal_1155_twice_with_unique_addresses() {
 
     let all = client.all_collections();
     assert_eq!(all.len(), 2);
-    assert!(matches!(all.get(0).unwrap().kind, CollectionKind::Normal1155));
-    assert!(matches!(all.get(1).unwrap().kind, CollectionKind::Normal1155));
+    assert!(matches!(
+        all.get(0).unwrap().kind,
+        CollectionKind::Normal1155
+    ));
+    assert!(matches!(
+        all.get(1).unwrap().kind,
+        CollectionKind::Normal1155
+    ));
 }
 
 #[test]
@@ -142,9 +157,11 @@ fn deploys_lazy_721_twice_with_unique_addresses() {
     let salt_b = BytesN::from_array(&env, &[31u8; 32]);
     let creator_pubkey = BytesN::from_array(&env, &[7u8; 32]);
     let royalty_receiver = Address::generate(&env);
+    let currency = Address::generate(&env);
 
     let deployed_a = client.deploy_lazy_721(
         &creator,
+        &currency,
         &creator_pubkey,
         &String::from_str(&env, "Lazy 721 A"),
         &String::from_str(&env, "LZ7A"),
@@ -156,6 +173,7 @@ fn deploys_lazy_721_twice_with_unique_addresses() {
 
     let deployed_b = client.deploy_lazy_721(
         &creator,
+        &currency,
         &creator_pubkey,
         &String::from_str(&env, "Lazy 721 B"),
         &String::from_str(&env, "LZ7B"),
@@ -170,8 +188,14 @@ fn deploys_lazy_721_twice_with_unique_addresses() {
 
     let all = client.all_collections();
     assert_eq!(all.len(), 2);
-    assert!(matches!(all.get(0).unwrap().kind, CollectionKind::LazyMint721));
-    assert!(matches!(all.get(1).unwrap().kind, CollectionKind::LazyMint721));
+    assert!(matches!(
+        all.get(0).unwrap().kind,
+        CollectionKind::LazyMint721
+    ));
+    assert!(matches!(
+        all.get(1).unwrap().kind,
+        CollectionKind::LazyMint721
+    ));
 }
 
 #[test]
@@ -183,9 +207,11 @@ fn deploys_lazy_1155_twice_with_unique_addresses() {
     let salt_b = BytesN::from_array(&env, &[41u8; 32]);
     let creator_pubkey = BytesN::from_array(&env, &[9u8; 32]);
     let royalty_receiver = Address::generate(&env);
+    let currency = Address::generate(&env);
 
     let deployed_a = client.deploy_lazy_1155(
         &creator,
+        &currency,
         &creator_pubkey,
         &String::from_str(&env, "Lazy 1155 A"),
         &600u32,
@@ -195,6 +221,7 @@ fn deploys_lazy_1155_twice_with_unique_addresses() {
 
     let deployed_b = client.deploy_lazy_1155(
         &creator,
+        &currency,
         &creator_pubkey,
         &String::from_str(&env, "Lazy 1155 B"),
         &600u32,
@@ -207,6 +234,12 @@ fn deploys_lazy_1155_twice_with_unique_addresses() {
 
     let all = client.all_collections();
     assert_eq!(all.len(), 2);
-    assert!(matches!(all.get(0).unwrap().kind, CollectionKind::LazyMint1155));
-    assert!(matches!(all.get(1).unwrap().kind, CollectionKind::LazyMint1155));
+    assert!(matches!(
+        all.get(0).unwrap().kind,
+        CollectionKind::LazyMint1155
+    ));
+    assert!(matches!(
+        all.get(1).unwrap().kind,
+        CollectionKind::LazyMint1155
+    ));
 }

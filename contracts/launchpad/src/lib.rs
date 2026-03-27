@@ -1,7 +1,8 @@
 #![no_std]
+#![allow(clippy::too_many_arguments, deprecated)]
 
-pub mod events;
 mod contract;
+pub mod events;
 mod storage;
 mod types;
 

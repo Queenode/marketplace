@@ -70,12 +70,12 @@ export default function ListingDetailPage() {
                 if (Number(id) >= 1 && Number(id) <= 6) {
                     const mockIdx = Number(id) - 1;
                     const mocks = [
-                        { title: "Ndebele Geometry", artist: "GB2...Traditional", price: 250, image: "https://images.unsplash.com/photo-1582582621959-48d27397dc69?w=800&q=80" },
-                        { title: "Maasai Beadwork Essence", artist: "GB3...Contemporary", price: 180, image: "https://images.unsplash.com/photo-1590845947698-8924d7409b56?w=800&q=80" },
-                        { title: "Bronze Kingdom Legacy", artist: "GB4...Classical", price: 420, image: "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=800&q=80" },
-                        { title: "Sahel Sunset Canvas", artist: "GB5...Modern", price: 310, image: "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800&q=80" },
-                        { title: "Kente Woven Dreams", artist: "GB6...Textile", price: 195, image: "https://images.unsplash.com/photo-1528699144885-3652875b4783?w=800&q=80" },
-                        { title: "Baobab Spirit", artist: "GB7...Sculpture", price: 375, image: "https://images.unsplash.com/photo-1559519529-0935f852b3a6?w=800&q=80" },
+                        { title: "Ndebele Geometry", artist: "GB2...Traditional", category: "Traditional", price: 250, image: "https://images.unsplash.com/photo-1582582621959-48d27397dc69?w=800&q=80" },
+                        { title: "Maasai Beadwork Essence", artist: "GB3...Contemporary", category: "Contemporary", price: 180, image: "https://images.unsplash.com/photo-1590845947698-8924d7409b56?w=800&q=80" },
+                        { title: "Bronze Kingdom Legacy", artist: "GB4...Classical", category: "Classical", price: 420, image: "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=800&q=80" },
+                        { title: "Sahel Sunset Canvas", artist: "GB5...Modern", category: "Modern", price: 310, image: "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800&q=80" },
+                        { title: "Kente Woven Dreams", artist: "GB6...Textile", category: "Textile", price: 195, image: "https://images.unsplash.com/photo-1528699144885-3652875b4783?w=800&q=80" },
+                        { title: "Baobab Spirit", artist: "GB7...Sculpture", category: "Sculpture", price: 375, image: "https://images.unsplash.com/photo-1559519529-0935f852b3a6?w=800&q=80" },
                     ];
                     const m = mocks[mockIdx];
                     setListing({
@@ -97,7 +97,8 @@ export default function ListingDetailPage() {
                         description: `A stunning masterpiece representing the rich ${m.title.split(' ')[0]} culture. This unique artwork captures the essence of African heritage through modern digital expression.`,
                         artist: m.artist,
                         image: m.image,
-                        year: "2024"
+                        year: "2024",
+                        category: m.category,
                     });
                     setIsLoading(false);
                     return;

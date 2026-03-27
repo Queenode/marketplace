@@ -87,6 +87,7 @@ export interface CreateAuctionInput {
   description: string;
   artistName: string;
   year: string;
+  category: string;
   imageFile: File;
   reservePriceXlm: number;
   durationHours: number;
@@ -119,6 +120,7 @@ export function useCreateAuction(creatorPublicKey: string | null) {
           artist: input.artistName,
           image: `ipfs://${imageResult.cid}`,
           year: input.year,
+          category: input.category,
         };
 
         // Step 3: Upload metadata to IPFS.

@@ -25,6 +25,7 @@ export interface ArtworkMetadata {
   /** Must be in the form "ipfs://CID" */
   image: string;
   year: string;
+  category: string;
 }
 
 /** Result of any IPFS upload */

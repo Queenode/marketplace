@@ -8,7 +8,25 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Afristore brand palette — warm earth tones inspired by African art.
+        // Afristore brand palette — updated to match exact guidelines
+        primary: {
+          DEFAULT: "#E27D60", // Vibrant Terracotta
+          light: "#F49D76",
+          dark: "#B62710",
+        },
+        secondary: {
+          DEFAULT: "#85DCBA", // Soft Mint Green
+          light: "#B0EACB",
+          dark: "#178758",
+        },
+        bg: {
+          light: "#F8F9FA",
+          dark: "#1E1E24",
+        },
+        text: {
+          primary: "#212529",
+          secondary: "#6C757D",
+        },
         brand: {
           50: "#fdf6ee",
           100: "#faecd9",

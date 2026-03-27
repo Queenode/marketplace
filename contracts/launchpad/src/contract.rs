@@ -1,11 +1,10 @@
-
 //! Launchpad — Factory contract that deploys the 4 NFT collection types.
 //!
 //! # Deployment flow
 //!
 //! 1. Admin deploys this contract and calls `initialize`.
 //! 2. Admin uploads each of the 4 collection WASMs with:
-//!      `stellar contract upload --wasm <file>.wasm --network testnet`
+//!    `stellar contract upload --wasm <file>.wasm --network testnet`
 //!    and then calls `set_wasm_hashes` with the 4 resulting 32-byte hashes.
 //! 3. Any user can now call one of the four `deploy_*` functions to launch
 //!    their own collection.  The factory calls `initialize` on the freshly
@@ -21,19 +20,12 @@
 //! Every `deploy()` call shares that same WASM — no bytecode duplication.
 //! Each instance gets completely isolated storage.
 
-
-
-
-use soroban_sdk::{
-    contract, contractclient, contractimpl, symbol_short, Address, BytesN, Env, String, Vec,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, String, Vec};
 
 use crate::{
-    events,
-    storage,
+    events, storage,
     types::{CollectionKind, CollectionRecord, Error},
 };
-
 
 // ─── Cross-contract clients ───────────────────────────────────────────────────
 // We define minimal interfaces for the four collection types so the factory
@@ -43,6 +35,7 @@ mod iface {
     use soroban_sdk::{contractclient, Address, BytesN, Env, String};
 
     #[contractclient(name = "Normal721Client")]
+    #[allow(dead_code)]
     pub trait INormal721 {
         fn initialize(
             env: Env,
@@ -56,6 +49,7 @@ mod iface {
     }
 
     #[contractclient(name = "Normal1155Client")]
+    #[allow(dead_code)]
     pub trait INormal1155 {
         fn initialize(
             env: Env,
@@ -67,6 +61,8 @@ mod iface {
     }
 
     #[contractclient(name = "Lazy721Client")]
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub trait ILazy721 {
         fn initialize(
             env: Env,
@@ -81,6 +77,7 @@ mod iface {
     }
 
     #[contractclient(name = "Lazy1155Client")]
+    #[allow(dead_code)]
     pub trait ILazy1155 {
         fn initialize(
             env: Env,
@@ -99,6 +96,7 @@ use iface::{Lazy1155Client, Lazy721Client, Normal1155Client, Normal721Client};
 pub struct Launchpad;
 
 #[contractimpl]
+#[allow(clippy::too_many_arguments)]
 impl Launchpad {
     pub fn initialize(
         env: Env,
@@ -116,9 +114,8 @@ impl Launchpad {
         Ok(())
     }
 
-
     // ── Admin: register WASM hashes ───────────────────────────────────────
- 
+
     /// Must be called by admin after uploading the four WASMs to the network.
     ///
     /// ```bash
@@ -146,10 +143,8 @@ impl Launchpad {
         Ok(())
     }
 
-
-     
     // ── Deploy: Normal ERC-721 ────────────────────────────────────────────
- 
+
     /// Deploy a Normal 721 collection.
     ///
     /// `salt` — any unique 32 bytes.  Tip: use sha256(creator ‖ name ‖ timestamp)
@@ -157,18 +152,33 @@ impl Launchpad {
     pub fn deploy_normal_721(
         env: Env,
         creator: Address,
+        currency: Address, // [NEW] SAC address for fee payment
         name: String,
         symbol: String,
-        max_supply: u64,  // pass u64::MAX for unlimited
-        royalty_bps: u32,  // e.g. 500 = 5 %
+        max_supply: u64,
+        royalty_bps: u32,
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
         creator.require_auth();
+
+        // [FEE] Collect deployment fee (#54)
+        let (receiver, fee) = storage::get_platform_fee(&env);
+        if fee > 0 {
+            soroban_sdk::token::TokenClient::new(&env, &currency).transfer(
+                &creator,
+                &receiver,
+                &(fee as i128),
+            );
+        }
+
         let wasm = storage::get_wasm_normal_721(&env).ok_or(Error::WasmHashNotSet)?;
 
         // Deploy a new contract instance that shares the Normal721 WASM
-        let addr = env.deployer().with_current_contract(salt).deploy_v2(wasm, ());
+        let addr = env
+            .deployer()
+            .with_current_contract(salt)
+            .deploy_v2(wasm, ());
 
         // Initialize the freshly deployed collection in the same tx
         Normal721Client::new(&env, &addr).initialize(
@@ -189,32 +199,52 @@ impl Launchpad {
     pub fn deploy_normal_1155(
         env: Env,
         creator: Address,
+        currency: Address,
         name: String,
         royalty_bps: u32,
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
         creator.require_auth();
+
+        // [FEE] Collect deployment fee (#54)
+        let (receiver, fee) = storage::get_platform_fee(&env);
+        if fee > 0 {
+            soroban_sdk::token::TokenClient::new(&env, &currency).transfer(
+                &creator,
+                &receiver,
+                &(fee as i128),
+            );
+        }
+
         let wasm = storage::get_wasm_normal_1155(&env).ok_or(Error::WasmHashNotSet)?;
 
-        let addr = env.deployer().with_current_contract(salt).deploy_v2(wasm, ());
+        let addr = env
+            .deployer()
+            .with_current_contract(salt)
+            .deploy_v2(wasm, ());
 
-        Normal1155Client::new(&env, &addr).initialize(&creator, &name, &royalty_bps, &royalty_receiver);
+        Normal1155Client::new(&env, &addr).initialize(
+            &creator,
+            &name,
+            &royalty_bps,
+            &royalty_receiver,
+        );
 
         storage::record_collection(&env, &creator, &addr, CollectionKind::Normal1155);
         events::publish_deploy(&env, symbol_short!("n1155"), &creator, &addr);
         Ok(addr)
     }
 
-
     // ── Deploy: LazyMint ERC-721 ──────────────────────────────────────────
- 
+
     /// `creator_pubkey` — the raw 32-byte ed25519 public key of the creator's
     /// Stellar keypair.  Off-chain tools sign mint vouchers with the matching
-    /// private key.  You can derive this from any `G...` address. 
+    /// private key.  You can derive this from any `G...` address.
     pub fn deploy_lazy_721(
         env: Env,
         creator: Address,
+        currency: Address,
         creator_pubkey: BytesN<32>,
         name: String,
         symbol: String,
@@ -224,9 +254,23 @@ impl Launchpad {
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
         creator.require_auth();
+
+        // [FEE] Collect deployment fee (#54)
+        let (receiver, fee) = storage::get_platform_fee(&env);
+        if fee > 0 {
+            soroban_sdk::token::TokenClient::new(&env, &currency).transfer(
+                &creator,
+                &receiver,
+                &(fee as i128),
+            );
+        }
+
         let wasm = storage::get_wasm_lazy_721(&env).ok_or(Error::WasmHashNotSet)?;
 
-        let addr = env.deployer().with_current_contract(salt).deploy_v2(wasm, ());
+        let addr = env
+            .deployer()
+            .with_current_contract(salt)
+            .deploy_v2(wasm, ());
 
         Lazy721Client::new(&env, &addr).initialize(
             &creator,
@@ -243,11 +287,11 @@ impl Launchpad {
         Ok(addr)
     }
 
-
-     // ── Deploy: LazyMint ERC-1155 ─────────────────────────────────────────
+    // ── Deploy: LazyMint ERC-1155 ─────────────────────────────────────────
     pub fn deploy_lazy_1155(
         env: Env,
         creator: Address,
+        currency: Address,
         creator_pubkey: BytesN<32>,
         name: String,
         royalty_bps: u32,
@@ -255,9 +299,23 @@ impl Launchpad {
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
         creator.require_auth();
+
+        // [FEE] Collect deployment fee (#54)
+        let (receiver, fee) = storage::get_platform_fee(&env);
+        if fee > 0 {
+            soroban_sdk::token::TokenClient::new(&env, &currency).transfer(
+                &creator,
+                &receiver,
+                &(fee as i128),
+            );
+        }
+
         let wasm = storage::get_wasm_lazy_1155(&env).ok_or(Error::WasmHashNotSet)?;
 
-        let addr = env.deployer().with_current_contract(salt).deploy_v2(wasm, ());
+        let addr = env
+            .deployer()
+            .with_current_contract(salt)
+            .deploy_v2(wasm, ());
 
         Lazy1155Client::new(&env, &addr).initialize(
             &creator,
@@ -271,7 +329,6 @@ impl Launchpad {
         events::publish_deploy(&env, symbol_short!("l1155"), &creator, &addr);
         Ok(addr)
     }
-
 
     // ── Admin management ──────────────────────────────────────────────────
 
@@ -287,15 +344,12 @@ impl Launchpad {
         Ok(())
     }
 
-
     // ── View functions ────────────────────────────────────────────────────
-
 
     /// All collections deployed by a specific creator.
     pub fn collections_by_creator(env: Env, creator: Address) -> Vec<CollectionRecord> {
         storage::collections_by_creator(&env, &creator)
     }
-
 
     /// Global registry of every collection ever deployed through this launchpad.
     pub fn all_collections(env: Env) -> Vec<CollectionRecord> {

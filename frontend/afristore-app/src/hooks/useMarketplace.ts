@@ -88,6 +88,7 @@ export interface CreateListingInput {
   description: string;
   artistName: string;
   year: string;
+  category: string;
   price: number;
   tokenAddress?: string;
   royaltyBps?: number;
@@ -121,6 +122,7 @@ export function useCreateListing(artistPublicKey: string | null) {
           artist: input.artistName,
           image: `ipfs://${imageResult.cid}`,
           year: input.year,
+          category: input.category,
         };
 
         // Step 3: Upload metadata to IPFS.
@@ -220,6 +222,7 @@ export interface UpdateListingInput {
   description: string;
   artistName: string;
   year: string;
+  category: string;
   price: number;
   tokenAddress: string;
   imageFile?: File; // Optional: only if updating the image
@@ -258,6 +261,7 @@ export function useUpdateListing(artistPublicKey: string | null) {
           artist: input.artistName,
           image: imageCid,
           year: input.year,
+          category: input.category,
         };
 
         // Step 3: Upload metadata to IPFS.

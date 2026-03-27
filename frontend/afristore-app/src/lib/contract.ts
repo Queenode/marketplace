@@ -566,9 +566,133 @@ export async function getAllAuctions(): Promise<Auction[]> {
   return auctions;
 }
 
+
+/** Convert stroops (i128 bigint) to XLM display string */
 // ── Utils ───────────────────────────────────────────────────
 
 export function stroopsToXlm(stroops: bigint): string {
   const xlm = Number(stroops) / 10_000_000;
   return xlm.toFixed(7).replace(/\.?0+$/, "");
+}
+
+/**
+ * revoke_artist — Admin revokes an artist.
+ */
+export async function revokeArtist(
+  adminPublicKey: string,
+  artistPublicKey: string
+): Promise<boolean> {
+  const args: xdr.ScVal[] = [
+    new Address(artistPublicKey).toScVal(),
+  ];
+
+  await invokeContract(adminPublicKey, "revoke_artist", args);
+  return true;
+}
+
+/**
+ * reinstate_artist — Admin reinstates a revoked artist.
+ */
+export async function reinstateArtist(
+  adminPublicKey: string,
+  artistPublicKey: string
+): Promise<boolean> {
+  const args: xdr.ScVal[] = [
+    new Address(artistPublicKey).toScVal(),
+  ];
+
+  await invokeContract(adminPublicKey, "reinstate_artist", args);
+  return true;
+}
+
+/**
+ * is_artist_revoked — Check if an artist is revoked.
+ */
+export async function isArtistRevoked(
+  artistPublicKey: string
+): Promise<boolean> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const args: xdr.ScVal[] = [
+    new Address(artistPublicKey).toScVal(),
+  ];
+
+  try {
+    const retVal = await invokeContract(DUMMY_KEY, "is_artist_revoked", args, true);
+    return scValToNative(retVal) as boolean;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * add_token_to_whitelist — Admin whitelists a token.
+ */
+export async function addTokenToWhitelist(
+  adminPublicKey: string,
+  tokenAddress: string
+): Promise<boolean> {
+  const args: xdr.ScVal[] = [
+    new Address(tokenAddress).toScVal(),
+  ];
+
+  await invokeContract(adminPublicKey, "add_token_to_whitelist", args);
+  return true;
+}
+
+/**
+ * remove_token_from_whitelist — Admin removes a token from whitelist.
+ */
+export async function removeTokenFromWhitelist(
+  adminPublicKey: string,
+  tokenAddress: string
+): Promise<boolean> {
+  const args: xdr.ScVal[] = [
+    new Address(tokenAddress).toScVal(),
+  ];
+
+  await invokeContract(adminPublicKey, "remove_token_from_whitelist", args);
+  return true;
+}
+
+/**
+ * get_treasury — Fetch current treasury address.
+ */
+export async function getTreasury(): Promise<string | null> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  try {
+    const retVal = await invokeContract(DUMMY_KEY, "get_treasury", [], true);
+    const native = scValToNative(retVal);
+    return native ? (native as Address).toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * get_protocol_fee — Fetch current protocol fee (bps).
+ */
+export async function getProtocolFee(): Promise<number> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  try {
+    const retVal = await invokeContract(DUMMY_KEY, "get_protocol_fee", [], true);
+    return Number(scValToNative(retVal));
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * get_admin — Fetch current admin address.
+ */
+export async function getAdmin(): Promise<string | null> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  try {
+    const retVal = await invokeContract(DUMMY_KEY, "get_admin", [], true);
+    // get_admin returns Option<Address>
+    const native = scValToNative(retVal);
+    if (!native) return null;
+    return (native as Address).toString();
+  } catch {
+    return null;
+  }
 }

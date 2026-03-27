@@ -45,7 +45,7 @@ fn test_set_treasury_and_protocol_fee() {
     assert_eq!(client.get_treasury(), Some(treasury.clone()));
     // Set protocol fee to 500 bps (5%)
     client.set_protocol_fee(&artist, &500u32);
-    assert_eq!(client.get_protocol_fee(), Some(500u32));
+    assert_eq!(client.get_protocol_fee(), 500u32);
     // Create listing and buy artwork
     let cid = bytes!(&env, 0x516d74657374);
     let price = 10_000_000_i128;
@@ -347,7 +347,14 @@ fn test_update_listing_wrong_artist() {
 
     let new_cid = bytes!(&env, 0x51);
     let new_rec = valid_recipients(&env, &artist);
-    client.update_listing(&buyer, &id, &new_cid, &10_000_000_i128, &contract_id, &new_rec);
+    client.update_listing(
+        &buyer,
+        &id,
+        &new_cid,
+        &10_000_000_i128,
+        &contract_id,
+        &new_rec,
+    );
 }
 
 #[test]
@@ -371,8 +378,14 @@ fn test_update_listing_not_active() {
 
     let new_cid = bytes!(&env, 0x51);
     let new_rec = valid_recipients(&env, &artist);
-    let new_rec = valid_recipients(&env, &artist);
-    client.update_listing(&artist, &id, &new_cid, &10_000_000_i128, &contract_id, &new_rec);
+    client.update_listing(
+        &artist,
+        &id,
+        &new_cid,
+        &10_000_000_i128,
+        &contract_id,
+        &new_rec,
+    );
 }
 
 #[test]
@@ -386,7 +399,7 @@ fn test_artist_revocation_and_reinstatement() {
 
     // Verify revoked artist cannot create listing
     let cid = bytes!(&env, 0x516d74657374);
-    let _res = env.as_contract(&client.address, || {
+    env.as_contract(&client.address, || {
         let r = client.try_create_listing(
             &artist_to_revoke,
             &cid,
@@ -443,7 +456,14 @@ fn test_update_listing_fails_with_pending_offers() {
     // Try to update while offer is pending
     let new_cid = bytes!(&env, 0x51);
     let new_rec = valid_recipients(&env, &artist);
-    client.update_listing(&artist, &listing_id, &new_cid, &10_000_000_i128, &contract_id, &new_rec);
+    client.update_listing(
+        &artist,
+        &listing_id,
+        &new_cid,
+        &10_000_000_i128,
+        &contract_id,
+        &new_rec,
+    );
 }
 
 // ── get_artist_listings ──────────────────────────────────────
