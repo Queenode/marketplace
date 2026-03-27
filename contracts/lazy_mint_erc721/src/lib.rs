@@ -25,6 +25,9 @@ use soroban_sdk::{
     xdr::ToXdr, Address, Bytes, BytesN, Env, String,
 };
 
+const TTL_THRESHOLD: u32 = 50_000;
+const TTL_BUMP: u32 = 100_000;
+
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
 #[contracterror]
@@ -141,6 +144,7 @@ impl LazyMint721 {
         voucher: MintVoucher,
         signature: BytesN<64>,
     ) -> Result<u64, Error> {
+        Self::extend_instance_ttl(&env);
         buyer.require_auth();
 
         // 1. Expiry check
@@ -244,6 +248,7 @@ impl LazyMint721 {
     // ── Transfers ─────────────────────────────────────────────────────────
 
     pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         from.require_auth();
         Self::_transfer(&env, &from, &to, token_id)
     }
@@ -255,6 +260,7 @@ impl LazyMint721 {
         to: Address,
         token_id: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
         Self::_check_approved(&env, &spender, &from, token_id)?;
         env.storage()
@@ -271,6 +277,7 @@ impl LazyMint721 {
         approved: Address,
         token_id: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
         let owner: Address = env
             .storage()
@@ -295,6 +302,7 @@ impl LazyMint721 {
     }
 
     pub fn set_approval_for_all(env: Env, owner: Address, operator: Address, approved: bool) {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         let key = DataKey::ApprovedForAll(owner.clone(), operator.clone());
         env.storage().persistent().set(&key, &approved);
@@ -376,6 +384,7 @@ impl LazyMint721 {
     // ── Admin ─────────────────────────────────────────────────────────────
 
     pub fn transfer_ownership(env: Env, new_creator: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -384,6 +393,7 @@ impl LazyMint721 {
     }
 
     pub fn update_creator_pubkey(env: Env, new_pubkey: BytesN<32>) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -392,6 +402,7 @@ impl LazyMint721 {
     }
 
     pub fn update_royalty(env: Env, receiver: Address, bps: u32) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -401,6 +412,10 @@ impl LazyMint721 {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────
+
+    fn extend_instance_ttl(env: &Env) {
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_BUMP);
+    }
 
     fn only_creator(env: &Env) -> Result<Address, Error> {
         let creator: Address = env
@@ -469,6 +484,11 @@ impl LazyMint721 {
             &DataKey::BalanceOf(from.clone()),
             &(from_bal.saturating_sub(1)),
         );
+        env.storage().persistent().extend_ttl(
+            &DataKey::BalanceOf(from.clone()),
+            TTL_THRESHOLD,
+            TTL_BUMP,
+        );
 
         let to_bal: u64 = env
             .storage()
@@ -485,6 +505,9 @@ impl LazyMint721 {
         env.storage()
             .persistent()
             .set(&DataKey::Owner(token_id), to);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Owner(token_id), TTL_THRESHOLD, TTL_BUMP);
         env.events().publish(
             (symbol_short!("transfer"), from.clone()),
             (to.clone(), token_id),

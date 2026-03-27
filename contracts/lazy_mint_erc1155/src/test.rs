@@ -2,16 +2,37 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::{Error, LazyMint1155, LazyMint1155Client, MintVoucher1155};
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
+use ed25519_dalek::{Signer, SigningKey};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env, String};
 
-fn setup_env() -> (Env, LazyMint1155Client<'static>, Address, BytesN<32>) {
+fn jump_ledger(env: &Env, delta: u32) {
+    env.ledger().with_mut(|li| {
+        li.sequence_number += delta;
+    });
+}
+
+fn creator_signing_key() -> SigningKey {
+    let secret_key: ed25519_dalek::SecretKey = [7u8; 32];
+    SigningKey::from_bytes(&secret_key)
+}
+
+fn setup_env() -> (
+    Env,
+    LazyMint1155Client<'static>,
+    Address, /*contract_id*/
+    Address, /*creator*/
+    BytesN<32>,
+) {
     let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 1);
 
     let contract_id = env.register(LazyMint1155, ());
     let client = LazyMint1155Client::new(&env, &contract_id);
 
     let creator = Address::generate(&env);
-    let creator_pubkey = BytesN::from_array(&env, &[1u8; 32]);
+    let creator_signing_key = creator_signing_key();
+    let creator_pubkey_bytes = creator_signing_key.verifying_key().to_bytes();
+    let creator_pubkey = BytesN::<32>::from_array(&env, &creator_pubkey_bytes);
     let name = String::from_str(&env, "LazyMint1155");
     let royalty_bps = 500u32;
     let royalty_receiver = Address::generate(&env);
@@ -24,12 +45,12 @@ fn setup_env() -> (Env, LazyMint1155Client<'static>, Address, BytesN<32>) {
         &royalty_receiver,
     );
 
-    (env, client, creator, creator_pubkey)
+    (env, client, contract_id, creator, creator_pubkey)
 }
 
 #[test]
 fn test_register_edition_success() {
-    let (env, client, creator, _) = setup_env();
+    let (env, client, _contract_id, _creator, _) = setup_env();
     let token_id = 1u64;
     let max_supply = 100u128;
 
@@ -40,7 +61,7 @@ fn test_register_edition_success() {
 
 #[test]
 fn test_register_edition_only_creator_fails_without_auth() {
-    let (env, client, creator, _) = setup_env();
+    let (env, client, _contract_id, _creator, _) = setup_env();
     let token_id = 1u64;
 
     // Call without mock_all_auths should fail because creator auth is required
@@ -48,9 +69,21 @@ fn test_register_edition_only_creator_fails_without_auth() {
     assert!(res.is_err());
 }
 
+fn sign_voucher(env: &Env, contract_id: &Address, voucher: &MintVoucher1155) -> BytesN<64> {
+    let signing_key = creator_signing_key();
+
+    let digest = env.as_contract(contract_id, || LazyMint1155::_voucher_digest(env, voucher));
+    let mut msg = [0u8; 32];
+    digest.copy_into_slice(&mut msg);
+
+    let sig = signing_key.try_sign(&msg).unwrap();
+    let sig_bytes = sig.to_bytes();
+    BytesN::<64>::from_array(env, &sig_bytes)
+}
+
 #[test]
 fn test_redeem_fails_unregistered_edition() {
-    let (env, client, _creator, _) = setup_env();
+    let (env, client, _contract_id, _creator, _creator_pubkey) = setup_env();
     let buyer = Address::generate(&env);
     let voucher = MintVoucher1155 {
         token_id: 1,
@@ -70,7 +103,7 @@ fn test_redeem_fails_unregistered_edition() {
 
 #[test]
 fn test_redeem_enforces_max_supply() {
-    let (env, client, creator, _) = setup_env();
+    let (env, client, _contract_id, _creator, _) = setup_env();
     let token_id = 1u64;
     let max_supply = 5u128;
 
@@ -90,6 +123,116 @@ fn test_redeem_enforces_max_supply() {
     let _signature = BytesN::from_array(&env, &[0u8; 64]);
 
     // We expect this to fail with MaxSupplyReached if we were to proceed past sig check.
+}
+
+#[test]
+fn instance_ttl_is_extended_on_redeem() {
+    let (env, client, contract_id, _creator, _creator_pubkey) = setup_env();
+    env.mock_all_auths();
+
+    let token_1 = 1u64;
+    let token_2 = 2u64;
+
+    client.register_edition(&token_1, &1000u128);
+    client.register_edition(&token_2, &1000u128);
+
+    let buyer = Address::generate(&env);
+
+    // Past threshold so instance TTL would expire unless redeem extends it.
+    jump_ledger(&env, 60_000);
+
+    let voucher_1 = MintVoucher1155 {
+        token_id: token_1,
+        buyer_quota: 10,
+        price_per_unit: 0,
+        currency: Address::generate(&env),
+        uri: String::from_str(&env, "ipfs://t1"),
+        uri_hash: BytesN::from_array(&env, &[1u8; 32]),
+        valid_until: 0,
+    };
+    let sig_1 = sign_voucher(&env, &contract_id, &voucher_1);
+    client.redeem(&buyer, &voucher_1, &1u128, &sig_1);
+
+    jump_ledger(&env, 60_000);
+
+    let voucher_2 = MintVoucher1155 {
+        token_id: token_2,
+        buyer_quota: 10,
+        price_per_unit: 0,
+        currency: Address::generate(&env),
+        uri: String::from_str(&env, "ipfs://t2"),
+        uri_hash: BytesN::from_array(&env, &[2u8; 32]),
+        valid_until: 0,
+    };
+    let sig_2 = sign_voucher(&env, &contract_id, &voucher_2);
+    client.redeem(&buyer, &voucher_2, &1u128, &sig_2);
+}
+
+#[test]
+fn persistent_total_supply_ttl_is_extended_on_redeem() {
+    let (env, client, contract_id, _creator, _creator_pubkey) = setup_env();
+    env.mock_all_auths();
+
+    let token_id = 1u64;
+    client.register_edition(&token_id, &1000u128);
+
+    let buyer = Address::generate(&env);
+    let voucher = MintVoucher1155 {
+        token_id,
+        buyer_quota: 10,
+        price_per_unit: 0,
+        currency: Address::generate(&env),
+        uri: String::from_str(&env, "ipfs://t1"),
+        uri_hash: BytesN::from_array(&env, &[1u8; 32]),
+        valid_until: 0,
+    };
+    let sig = sign_voucher(&env, &contract_id, &voucher);
+    client.redeem(&buyer, &voucher, &1u128, &sig);
+
+    jump_ledger(&env, 60_000);
+
+    let total_supply_has = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .has(&crate::DataKey::TotalSupply(token_id))
+    });
+    assert!(total_supply_has);
+}
+
+#[test]
+fn persistent_balance_from_ttl_is_extended_on_transfer() {
+    let (env, client, contract_id, _creator, _creator_pubkey) = setup_env();
+    env.mock_all_auths();
+
+    let token_id = 1u64;
+    client.register_edition(&token_id, &1000u128);
+
+    let buyer_1 = Address::generate(&env);
+    let buyer_2 = Address::generate(&env);
+
+    let voucher = MintVoucher1155 {
+        token_id,
+        buyer_quota: 10,
+        price_per_unit: 0,
+        currency: Address::generate(&env),
+        uri: String::from_str(&env, "ipfs://t1"),
+        uri_hash: BytesN::from_array(&env, &[1u8; 32]),
+        valid_until: 0,
+    };
+    let sig = sign_voucher(&env, &contract_id, &voucher);
+    client.redeem(&buyer_1, &voucher, &5u128, &sig);
+
+    // Transfer updates Balance(from) without extending TTL unless fixed.
+    client.transfer(&buyer_1, &buyer_2, &token_id, &2u128);
+
+    jump_ledger(&env, 60_000);
+
+    let from_balance_has = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .has(&crate::DataKey::Balance(buyer_1.clone(), token_id))
+    });
+    assert!(from_balance_has);
 }
 
 #[test]

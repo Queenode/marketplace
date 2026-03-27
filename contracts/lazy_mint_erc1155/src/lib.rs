@@ -116,6 +116,7 @@ impl LazyMint1155 {
         amount: u128,
         signature: BytesN<64>,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         buyer.require_auth();
 
         // 1. Expiry
@@ -206,6 +207,11 @@ impl LazyMint1155 {
         env.storage()
             .persistent()
             .set(&DataKey::TotalSupply(voucher.token_id), &(supply + amount));
+        env.storage().persistent().extend_ttl(
+            &DataKey::TotalSupply(voucher.token_id),
+            50_000,
+            100_000,
+        );
 
         // Update per-buyer counter
         env.storage()
@@ -230,6 +236,7 @@ impl LazyMint1155 {
         token_id: u64,
         amount: u128,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         from.require_auth();
         Self::_transfer(&env, &from, &to, token_id, amount)
     }
@@ -242,6 +249,7 @@ impl LazyMint1155 {
         token_id: u64,
         amount: u128,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         operator.require_auth();
         if !Self::_is_approved_for_all(&env, &operator, &from) {
             return Err(Error::NotApproved);
@@ -257,6 +265,7 @@ impl LazyMint1155 {
         token_ids: Vec<u64>,
         amounts: Vec<u128>,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
 
         // [SECURITY] Allow owner or authorized operator (#48)
@@ -282,6 +291,7 @@ impl LazyMint1155 {
     // ── Approvals ─────────────────────────────────────────────────────────
 
     pub fn set_approval_for_all(env: Env, owner: Address, operator: Address, approved: bool) {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         let key = DataKey::ApprovedForAll(owner.clone(), operator.clone());
         env.storage().persistent().set(&key, &approved);
@@ -300,6 +310,7 @@ impl LazyMint1155 {
         token_id: u64,
         amount: u128,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
 
         // [SECURITY] Allow owner or authorized operator to burn (#48)
@@ -318,6 +329,11 @@ impl LazyMint1155 {
         env.storage()
             .persistent()
             .set(&DataKey::Balance(from.clone(), token_id), &(bal - amount));
+        env.storage().persistent().extend_ttl(
+            &DataKey::Balance(from.clone(), token_id),
+            50_000,
+            100_000,
+        );
         let supply: u128 = env
             .storage()
             .persistent()
@@ -327,6 +343,9 @@ impl LazyMint1155 {
             &DataKey::TotalSupply(token_id),
             &(supply.saturating_sub(amount)),
         );
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::TotalSupply(token_id), 50_000, 100_000);
         #[allow(deprecated)]
         env.events()
             .publish((symbol_short!("burn"), from), (token_id, amount));
@@ -414,6 +433,7 @@ impl LazyMint1155 {
     // ── Admin ─────────────────────────────────────────────────────────────
 
     pub fn transfer_ownership(env: Env, new_creator: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -422,6 +442,7 @@ impl LazyMint1155 {
     }
 
     pub fn update_creator_pubkey(env: Env, new_pubkey: BytesN<32>) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -430,6 +451,7 @@ impl LazyMint1155 {
     }
 
     pub fn update_royalty(env: Env, receiver: Address, bps: u32) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -517,6 +539,11 @@ impl LazyMint1155 {
         env.storage().persistent().set(
             &DataKey::Balance(from.clone(), token_id),
             &(from_bal - amount),
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::Balance(from.clone(), token_id),
+            50_000,
+            100_000,
         );
         let to_bal: u128 = env
             .storage()

@@ -11,6 +11,9 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
 };
 
+const TTL_THRESHOLD: u32 = 50_000;
+const TTL_BUMP: u32 = 100_000;
+
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
 #[contracterror]
@@ -96,6 +99,7 @@ impl NormalNFT721 {
     /// Creator mints a single token to `to` with the given metadata URI.
     /// Returns the new token_id.
     pub fn mint(env: Env, to: Address, uri: String) -> Result<u64, Error> {
+        Self::extend_instance_ttl(&env);
         let creator = Self::only_creator(&env)?;
 
         let token_id: u64 = env
@@ -123,6 +127,7 @@ impl NormalNFT721 {
 
     /// Batch mint multiple tokens to the same recipient.
     pub fn batch_mint(env: Env, to: Address, uris: Vec<String>) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         for uri in uris.iter() {
             // recursively calls single mint so supply checks stay consistent
@@ -148,6 +153,7 @@ impl NormalNFT721 {
 
     /// Owner transfers their token.
     pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         from.require_auth();
         Self::_transfer(&env, &from, &to, token_id)
     }
@@ -160,6 +166,7 @@ impl NormalNFT721 {
         to: Address,
         token_id: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
         Self::_check_approved(&env, &spender, &from, token_id)?;
         // clear single-token approval on transfer
@@ -177,6 +184,7 @@ impl NormalNFT721 {
         approved: Address,
         token_id: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
         let owner: Address = env
             .storage()
@@ -203,6 +211,7 @@ impl NormalNFT721 {
     }
 
     pub fn set_approval_for_all(env: Env, owner: Address, operator: Address, approved: bool) {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         let key = DataKey::ApprovedForAll(owner.clone(), operator.clone());
         env.storage().persistent().set(&key, &approved);
@@ -214,6 +223,7 @@ impl NormalNFT721 {
     // ── Burn ──────────────────────────────────────────────────────────────
 
     pub fn burn(env: Env, spender: Address, token_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         spender.require_auth();
         let owner: Address = env
             .storage()
@@ -232,6 +242,11 @@ impl NormalNFT721 {
         env.storage()
             .persistent()
             .set(&DataKey::BalanceOf(owner.clone()), &(bal.saturating_sub(1)));
+        env.storage().persistent().extend_ttl(
+            &DataKey::BalanceOf(owner.clone()),
+            TTL_THRESHOLD,
+            TTL_BUMP,
+        );
 
         env.storage().persistent().remove(&DataKey::Owner(token_id));
         env.storage()
@@ -333,6 +348,7 @@ impl NormalNFT721 {
     // ── Admin ─────────────────────────────────────────────────────────────
 
     pub fn transfer_ownership(env: Env, new_creator: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -341,6 +357,7 @@ impl NormalNFT721 {
     }
 
     pub fn update_royalty(env: Env, receiver: Address, bps: u32) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
         env.storage()
             .instance()
@@ -350,6 +367,10 @@ impl NormalNFT721 {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────
+
+    fn extend_instance_ttl(env: &Env) {
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_BUMP);
+    }
 
     fn only_creator(env: &Env) -> Result<Address, Error> {
         let creator: Address = env
@@ -430,6 +451,11 @@ impl NormalNFT721 {
             &DataKey::BalanceOf(from.clone()),
             &(from_bal.saturating_sub(1)),
         );
+        env.storage().persistent().extend_ttl(
+            &DataKey::BalanceOf(from.clone()),
+            TTL_THRESHOLD,
+            TTL_BUMP,
+        );
 
         let to_bal: u64 = env
             .storage()
@@ -446,6 +472,9 @@ impl NormalNFT721 {
         env.storage()
             .persistent()
             .set(&DataKey::Owner(token_id), to);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Owner(token_id), TTL_THRESHOLD, TTL_BUMP);
         env.events().publish(
             (symbol_short!("transfer"), from.clone()),
             (to.clone(), token_id),
@@ -481,3 +510,6 @@ impl NormalNFT721 {
         Err(Error::NotApproved)
     }
 }
+
+#[cfg(test)]
+mod test;
