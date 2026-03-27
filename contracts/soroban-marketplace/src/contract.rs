@@ -12,12 +12,11 @@ use crate::events::*;
 
 use crate::{
     storage::{
-        add_artist_auction_id, add_artist_listing_id,
-        get_artist_listing_ids, get_listing_count, increment_auction_count,
-        increment_listing_count, increment_offer_count, is_artist_revoked_storage, load_auction,
-        load_listing, load_listing_offers, load_offer, load_offerer_offers,
-        remove_artist_revocation_storage, save_auction, save_listing, save_listing_offers,
-        save_offer, save_offerer_offers, set_artist_revocation_storage,
+        add_artist_auction_id, add_artist_listing_id, get_artist_listing_ids, get_listing_count,
+        increment_auction_count, increment_listing_count, increment_offer_count,
+        is_artist_revoked_storage, load_auction, load_listing, load_listing_offers, load_offer,
+        load_offerer_offers, remove_artist_revocation_storage, save_auction, save_listing,
+        save_listing_offers, save_offer, save_offerer_offers, set_artist_revocation_storage,
     },
     types::{
         Auction, AuctionStatus, Listing, ListingStatus, MarketplaceError, Offer, OfferStatus,

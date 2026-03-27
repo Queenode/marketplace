@@ -181,7 +181,6 @@ pub fn add_artist_auction_id(env: &Env, artist: &Address, auction_id: u64) {
         .extend_ttl(&key, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
 }
 
-
 pub fn save_listing_offers(env: &Env, listing_id: u64, ids: &Vec<u64>) {
     let key = DataKey::ListingOffers(listing_id);
     env.storage().persistent().set(&key, ids);

@@ -2,10 +2,7 @@
 #![allow(unused_variables, unused_imports)]
 
 use crate::{Error, LazyMint1155, LazyMint1155Client, MintVoucher1155};
-use soroban_sdk::{
-    testutils::Address as _,
-    Address, BytesN, Env, String,
-};
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
 
 fn setup_env() -> (Env, LazyMint1155Client<'static>, Address, BytesN<32>) {
     let env = Env::default();
