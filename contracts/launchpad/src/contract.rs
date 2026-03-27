@@ -132,6 +132,7 @@ impl Launchpad {
         wasm_lazy_721: BytesN<32>,
         wasm_lazy_1155: BytesN<32>,
     ) -> Result<(), Error> {
+        storage::extend_instance_ttl(&env);
         storage::require_admin(&env)?;
         storage::set_wasm_hashes(
             &env,
@@ -160,6 +161,7 @@ impl Launchpad {
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
+        storage::extend_instance_ttl(&env);
         creator.require_auth();
 
         // [FEE] Collect deployment fee (#54)
@@ -205,6 +207,7 @@ impl Launchpad {
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
+        storage::extend_instance_ttl(&env);
         creator.require_auth();
 
         // [FEE] Collect deployment fee (#54)
@@ -253,6 +256,7 @@ impl Launchpad {
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
+        storage::extend_instance_ttl(&env);
         creator.require_auth();
 
         // [FEE] Collect deployment fee (#54)
@@ -298,6 +302,7 @@ impl Launchpad {
         royalty_receiver: Address,
         salt: BytesN<32>,
     ) -> Result<Address, Error> {
+        storage::extend_instance_ttl(&env);
         creator.require_auth();
 
         // [FEE] Collect deployment fee (#54)
@@ -333,12 +338,14 @@ impl Launchpad {
     // ── Admin management ──────────────────────────────────────────────────
 
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
+        storage::extend_instance_ttl(&env);
         storage::require_admin(&env)?;
         storage::set_admin(&env, &new_admin);
         Ok(())
     }
 
     pub fn update_platform_fee(env: Env, receiver: Address, fee_bps: u32) -> Result<(), Error> {
+        storage::extend_instance_ttl(&env);
         storage::require_admin(&env)?;
         storage::set_platform_fee(&env, &receiver, fee_bps);
         Ok(())

@@ -5,9 +5,13 @@ use crate::types::{CollectionKind, CollectionRecord, DataKey, Error};
 const TTL_THRESHOLD: u32 = 50_000;
 const TTL_BUMP: u32 = 100_000;
 
+pub fn extend_instance_ttl(env: &Env) {
+    env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_BUMP);
+}
+
 pub fn set_initialized(env: &Env) {
     env.storage().instance().set(&DataKey::Initialized, &true);
-    env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_BUMP);
+    extend_instance_ttl(env);
 }
 
 pub fn is_initialized(env: &Env) -> bool {
