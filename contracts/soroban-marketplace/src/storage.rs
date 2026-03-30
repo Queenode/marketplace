@@ -20,6 +20,8 @@ pub enum DataKey {
     Offer(u64),
     ListingOffers(u64),
     OffererOffers(Address),
+    ListingLock(u64),
+    AuctionLock(u64),
 }
 
 const LEDGER_TTL_BUMP: u32 = 432_000;
@@ -258,4 +260,34 @@ pub fn set_protocol_fee_bps_storage(env: &Env, bps: u32) {
 
 pub fn get_protocol_fee_bps_storage(env: &Env) -> Option<u32> {
     env.storage().persistent().get(&DataKey::ProtocolFeeBps)
+}
+
+// ── Reentrancy Guards ────────────────────────────────────────
+
+pub fn acquire_listing_lock(env: &Env, listing_id: u64) -> bool {
+    let key = DataKey::ListingLock(listing_id);
+    if env.storage().persistent().has(&key) {
+        return false;
+    }
+    env.storage().persistent().set(&key, &true);
+    true
+}
+
+pub fn release_listing_lock(env: &Env, listing_id: u64) {
+    let key = DataKey::ListingLock(listing_id);
+    env.storage().persistent().remove(&key);
+}
+
+pub fn acquire_auction_lock(env: &Env, auction_id: u64) -> bool {
+    let key = DataKey::AuctionLock(auction_id);
+    if env.storage().persistent().has(&key) {
+        return false;
+    }
+    env.storage().persistent().set(&key, &true);
+    true
+}
+
+pub fn release_auction_lock(env: &Env, auction_id: u64) {
+    let key = DataKey::AuctionLock(auction_id);
+    env.storage().persistent().remove(&key);
 }
