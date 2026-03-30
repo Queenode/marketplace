@@ -21,6 +21,10 @@ const TOPIC_MAP: Record<string, string> = {
   'ofr_rjct': 'OFFER_REJECTED',
   'ofr_wdrn': 'OFFER_WITHDRAWN',
   'auc_crtd': 'AUCTION_CREATED',
+  'dep_n721': 'DEPLOY_NORMAL_721',
+  'dep_n1155': 'DEPLOY_NORMAL_1155',
+  'dep_l721': 'DEPLOY_LAZY_721',
+  'dep_l1155': 'DEPLOY_LAZY_1155',
 };
 
 export function parseMarketplaceEvent(
@@ -60,6 +64,19 @@ export function parseMarketplaceEvent(
   else if (nativeData.offerer) actor = nativeData.offerer.toString();
   else if (nativeData.bidder) actor = nativeData.bidder.toString();
   else if (nativeData.buyer) actor = nativeData.buyer.toString();
+
+  // For deploy events the value is a tuple (creator, collection_address)
+  // scValToNative returns an array for tuples
+  if (
+    type === 'DEPLOY_NORMAL_721' ||
+    type === 'DEPLOY_NORMAL_1155' ||
+    type === 'DEPLOY_LAZY_721' ||
+    type === 'DEPLOY_LAZY_1155'
+  ) {
+    if (Array.isArray(nativeData) && nativeData.length >= 2) {
+      actor = nativeData[0].toString(); // creator address
+    }
+  }
 
   return {
     eventType: type,

@@ -198,3 +198,55 @@ DataKey::ArtistListings(Address)  → Vec<u64>
 | Testnet Explorer | https://stellar.expert/explorer/testnet |
 | Horizon Testnet | https://horizon-testnet.stellar.org |
 | Friendbot | https://friendbot.stellar.org |
+
+---
+
+## Launchpad Deploy Workflow
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `MARKETPLACE_CONTRACT_ID` | Deployed marketplace Soroban contract ID |
+| `LAUNCHPAD_CONTRACT_ID` | Deployed launchpad factory contract ID |
+| `DATABASE_URL` | PostgreSQL connection string for the indexer |
+| `STELLAR_RPC_URL` | Soroban RPC endpoint (default: testnet) |
+| `POLL_INTERVAL_MS` | Indexer polling interval in ms (default: 5000) |
+| `PORT` | Indexer API port (default: 3001) |
+
+### Contract Hash Verification & Version Lock
+
+After uploading WASMs, record and verify hashes before invoking `set_wasm_hashes`:
+```bash
+# Verify a WASM hash matches your local build
+stellar contract upload --wasm target/.../normal_721.wasm --network testnet --source deployer --check
+# Compare output hash against your pinned value in .env.deploy:
+# HASH_N721=abc123...   ← commit this to your deploy lockfile
+```
+
+Store all four hashes in `scripts/deploy/.env.deploy` and never overwrite without a new build + audit.
+
+### Local Dev — Docker Compose
+
+The indexer ships with a `docker-compose.yml` for local development:
+```bash
+cd indexer
+cp .env.example .env          # fill in contract IDs
+docker compose up -d          # starts PostgreSQL + indexer API
+docker compose logs -f        # tail logs
+
+# Run Prisma migrations inside the container
+docker compose exec indexer npx prisma migrate deploy
+```
+
+Services started:
+
+| Service | Port | Description |
+|---|---|---|
+| `postgres` | 5432 | PostgreSQL database |
+| `indexer` | 3001 | Indexer + REST API |
+
+To reset the database:
+```bash
+docker compose down -v && docker compose up -d
+```

@@ -39,3 +39,14 @@ model MarketplaceEvent {
   ledgerSequence  Int
   ledgerTimestamp DateTime @default(now())
 }
+
+model Collection {
+  id              Int      @id @default(autoincrement())
+  contractAddress String   @unique
+  kind            String   // "normal_721" | "normal_1155" | "lazy_721" | "lazy_1155"
+  creator         String
+  name            String?
+  symbol          String?
+  deployedAtLedger Int
+  createdAt       DateTime @default(now())
+}
