@@ -124,82 +124,77 @@ impl NormalNFT1155 {
     ) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
-        
+
         let len = token_ids.len();
         if len == 0 {
             return Ok(());
         }
-        
+
         if token_ids.len() != amounts.len() || token_ids.len() != uris.len() {
             return Err(Error::LengthMismatch);
         }
-        
+
         // Read NextTokenId once
-        let next_token_id = env.storage()
+        let next_token_id = env
+            .storage()
             .instance()
             .get(&DataKey::NextTokenId)
             .unwrap_or(0);
         let mut max_token_id = next_token_id;
-        
+
         // Process each token type
         for i in 0..len {
             let token_id = token_ids.get(i).unwrap();
             let amount = amounts.get(i).unwrap();
             let uri = uris.get(i).unwrap();
-            
+
             // Track max token ID
             if token_id >= max_token_id {
                 max_token_id = token_id + 1;
             }
-            
+
             // Set URI if this is a new token type
             if !env.storage().persistent().has(&DataKey::TokenUri(token_id)) {
                 env.storage()
                     .persistent()
                     .set(&DataKey::TokenUri(token_id), &uri);
-                env.storage()
-                    .persistent()
-                    .extend_ttl(&DataKey::TokenUri(token_id), TTL_THRESHOLD, TTL_BUMP);
+                env.storage().persistent().extend_ttl(
+                    &DataKey::TokenUri(token_id),
+                    TTL_THRESHOLD,
+                    TTL_BUMP,
+                );
             }
-            
+
             // Update balance
             let balance_key = DataKey::Balance(to.clone(), token_id);
-            let current_balance: u128 = env
-                .storage()
-                .persistent()
-                .get(&balance_key)
-                .unwrap_or(0);
+            let current_balance: u128 = env.storage().persistent().get(&balance_key).unwrap_or(0);
             let new_balance = current_balance + amount;
             env.storage().persistent().set(&balance_key, &new_balance);
             env.storage()
                 .persistent()
                 .extend_ttl(&balance_key, TTL_THRESHOLD, TTL_BUMP);
-            
+
             // Update total supply
             let supply_key = DataKey::TotalSupply(token_id);
-            let current_supply: u128 = env
-                .storage()
-                .persistent()
-                .get(&supply_key)
-                .unwrap_or(0);
+            let current_supply: u128 = env.storage().persistent().get(&supply_key).unwrap_or(0);
             let new_supply = current_supply + amount;
             env.storage().persistent().set(&supply_key, &new_supply);
             env.storage()
                 .persistent()
                 .extend_ttl(&supply_key, TTL_THRESHOLD, TTL_BUMP);
-            
+
             // Emit event
             env.events()
                 .publish((symbol_short!("mint"), to.clone()), (token_id, amount));
         }
-        
+
         // Update NextTokenId once at the end if needed
         if max_token_id > next_token_id {
             env.storage()
                 .instance()
                 .set(&DataKey::NextTokenId, &max_token_id);
         }
-        
+
         Ok(())
     }
 

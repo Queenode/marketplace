@@ -1,4 +1,3 @@
-
 extern crate std;
 
 use std::format;
@@ -94,7 +93,7 @@ fn test_mint_batch_empty_is_noop() {
     let empty_amounts: Vec<u128> = Vec::new(&env);
     let empty_uris: Vec<String> = Vec::new(&env);
 
-client.mint_batch(&alice, &empty_ids, &empty_amounts, &empty_uris);
+    client.mint_batch(&alice, &empty_ids, &empty_amounts, &empty_uris);
 }
 
 #[test]
@@ -134,8 +133,6 @@ fn test_auth_enforcement() {
     // Authorized
     client.mint_batch(&creator, &ids, &amounts, &uris);
 }
-
-
 
 #[test]
 fn test_ttl_persistence() {
@@ -227,4 +224,3 @@ fn persistent_ttl_is_extended_on_burn_keys() {
     assert!(alice_balance_has);
     assert!(total_supply_has);
 }
-

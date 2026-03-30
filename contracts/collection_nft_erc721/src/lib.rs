@@ -95,10 +95,10 @@ impl NormalNFT721 {
     }
 
     pub fn next_token_id(env: Env) -> u64 {
-    env.storage()
-        .instance()
-        .get(&DataKey::NextTokenId)
-        .unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::NextTokenId)
+            .unwrap_or(0)
     }
 
     // ── Minting ───────────────────────────────────────────────────────────
@@ -137,12 +137,12 @@ impl NormalNFT721 {
     pub fn batch_mint(env: Env, to: Address, uris: Vec<String>) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         Self::only_creator(&env)?;
-        
+
         let uris_len = uris.len();
         if uris_len == 0 {
             return Ok(());
         }
-        
+
         // Read storage ONCE before the loop
         let mut next_token_id: u64 = env
             .storage()
@@ -159,26 +159,26 @@ impl NormalNFT721 {
             .instance()
             .get(&DataKey::TotalSupply)
             .unwrap_or(0);
-        
+
         // Check if we have enough supply for all tokens
         if next_token_id + (uris_len as u64) > max_supply {
             return Err(Error::MaxSupplyReached);
         }
-        
+
         // Get current balance once (will be incremented for each mint)
         let mut current_balance: u64 = env
             .storage()
             .persistent()
             .get(&DataKey::BalanceOf(to.clone()))
             .unwrap_or(0);
-        
+
         // Collect token IDs to emit events
         let mut minted_ids = Vec::new(&env);
-        
+
         // Mint all tokens in memory first
         for uri in uris.iter() {
             let token_id = next_token_id;
-            
+
             // Store token data
             env.storage()
                 .persistent()
@@ -186,21 +186,25 @@ impl NormalNFT721 {
             env.storage()
                 .persistent()
                 .set(&DataKey::TokenUri(token_id), &uri);
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::Owner(token_id), TTL_THRESHOLD, TTL_BUMP);
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::TokenUri(token_id), TTL_THRESHOLD, TTL_BUMP);
-            
+            env.storage().persistent().extend_ttl(
+                &DataKey::Owner(token_id),
+                TTL_THRESHOLD,
+                TTL_BUMP,
+            );
+            env.storage().persistent().extend_ttl(
+                &DataKey::TokenUri(token_id),
+                TTL_THRESHOLD,
+                TTL_BUMP,
+            );
+
             minted_ids.push_back(token_id);
-            
+
             // Increment in memory
             next_token_id += 1;
             total_supply += 1;
             current_balance += 1;
         }
-        
+
         // Write back to storage ONCE after the loop
         env.storage()
             .instance()
@@ -211,17 +215,21 @@ impl NormalNFT721 {
         env.storage()
             .persistent()
             .set(&DataKey::BalanceOf(to.clone()), &current_balance);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::BalanceOf(to.clone()), TTL_THRESHOLD, TTL_BUMP);
-        
+        env.storage().persistent().extend_ttl(
+            &DataKey::BalanceOf(to.clone()),
+            TTL_THRESHOLD,
+            TTL_BUMP,
+        );
+
         // Emit individual mint events (as per ERC-721 standard)
         let creator = Self::only_creator(&env)?;
         for token_id in minted_ids.iter() {
-            env.events()
-                .publish((symbol_short!("mint"), to.clone()), (creator.clone(), token_id));
+            env.events().publish(
+                (symbol_short!("mint"), to.clone()),
+                (creator.clone(), token_id),
+            );
         }
-        
+
         Ok(())
     }
 
