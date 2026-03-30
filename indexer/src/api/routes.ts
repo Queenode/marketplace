@@ -77,7 +77,7 @@ router.get('/creators/:address/collections', async (req: Request, res: Response)
     const { address } = req.params;
     try {
         const results = await prisma.collection.findMany({
-            where: { creator: address },
+            where: { creator: address as string },
             orderBy: { deployedAtLedger: 'desc' },
         });
         res.json(serialize(results));

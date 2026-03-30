@@ -49,4 +49,37 @@ router.get('/activity/recent', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch recent activity' });
     }
 });
+// GET /collections — all deployed collections
+router.get('/collections', async (req, res) => {
+    const { kind, creator } = req.query;
+    try {
+        const where = {};
+        if (kind)
+            where.kind = kind;
+        if (creator)
+            where.creator = creator;
+        const results = await prisma.collection.findMany({
+            where,
+            orderBy: { deployedAtLedger: 'desc' },
+        });
+        res.json(serialize(results));
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to fetch collections' });
+    }
+});
+// GET /creators/:address/collections — collections deployed by a creator
+router.get('/creators/:address/collections', async (req, res) => {
+    const { address } = req.params;
+    try {
+        const results = await prisma.collection.findMany({
+            where: { creator: address },
+            orderBy: { deployedAtLedger: 'desc' },
+        });
+        res.json(serialize(results));
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to fetch creator collections' });
+    }
+});
 export default router;
