@@ -24,6 +24,9 @@ pub enum MarketplaceError {
     CannotOfferOwnListing = 17,
     OfferNotPending = 18,
     InsufficientOfferAmount = 19,
+    ListingSold = 20,
+    ListingCancelled = 21,
+    ReentrancyGuard = 22,
 }
 
 #[contracttype]
