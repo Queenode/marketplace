@@ -11,7 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env.deploy"
 CONTRACT_DIR="$REPO_ROOT/contracts/soroban-marketplace"
-WASM="$CONTRACT_DIR/target/wasm32-unknown-unknown/release/soroban_marketplace.wasm"
+WASM_LOCAL="$CONTRACT_DIR/target/wasm32-unknown-unknown/release/soroban_marketplace.wasm"
+WASM_WORKSPACE="$REPO_ROOT/target/wasm32-unknown-unknown/release/soroban_marketplace.wasm"
+WASM="$WASM_WORKSPACE"
 FRONTEND_ENV="$REPO_ROOT/frontend/afristore-app/.env.local"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -40,14 +42,28 @@ echo "Step 1/4  Building contract WASM..."
 cd "$CONTRACT_DIR"
 cargo build --target wasm32-unknown-unknown --release 2>&1
 
+if [[ -f "$WASM_WORKSPACE" ]]; then
+  WASM="$WASM_WORKSPACE"
+elif [[ -f "$WASM_LOCAL" ]]; then
+  WASM="$WASM_LOCAL"
+else
+  echo "ERROR: Built WASM not found in expected locations:"
+  echo "  - $WASM_WORKSPACE"
+  echo "  - $WASM_LOCAL"
+  exit 1
+fi
+
 # ── Optimise WASM ─────────────────────────────────────────────
 echo ""
 echo "Step 2/4  Optimising WASM..."
-stellar contract optimize \
+if stellar contract optimize \
   --wasm "$WASM" \
-  --wasm-out "$WASM"
-WASM_SIZE=$(wc -c <"$WASM")
-echo "  WASM size: ${WASM_SIZE} bytes"
+  --wasm-out "$WASM"; then
+  WASM_SIZE=$(wc -c <"$WASM")
+  echo "  WASM size: ${WASM_SIZE} bytes"
+else
+  echo "  WARNING: WASM optimization failed. Continuing with unoptimized WASM."
+fi
 
 # ── Upload WASM to network ────────────────────────────────────
 echo ""

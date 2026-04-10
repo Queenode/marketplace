@@ -24,10 +24,10 @@ done
 
 # ── Generate keypair ──────────────────────────────────────────
 echo "Generating new keypair..."
-KEYPAIR=$(stellar keys generate afristore-deployer --network testnet 2>&1 || true)
+stellar keys generate afristore-deployer --fund --network testnet --overwrite >/dev/null 2>&1 || true
 
-STELLAR_SECRET=$(stellar keys show afristore-deployer --secret 2>/dev/null || true)
-STELLAR_PUBLIC=$(stellar keys show afristore-deployer 2>/dev/null || true)
+STELLAR_SECRET=$(stellar keys secret afristore-deployer 2>/dev/null || true)
+STELLAR_PUBLIC=$(stellar keys public-key afristore-deployer 2>/dev/null || true)
 
 if [[ -z "$STELLAR_SECRET" || -z "$STELLAR_PUBLIC" ]]; then
   echo "ERROR: Failed to generate keypair. Is the Stellar CLI installed and in your PATH?"

@@ -10,7 +10,10 @@ out/
 # Environment files — NEVER commit secrets
 .env.local
 .env.*.local
+.env
 scripts/deploy/.env.deploy
+.stellar/
+scripts/deploy/.stellar/
 
 # OS
 .DS_Store
