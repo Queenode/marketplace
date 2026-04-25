@@ -37,6 +37,10 @@ function parseCollectionRecord(raw: any): CollectionRecord {
   };
 }
 
+function toAddressScVal(address: string): xdr.ScVal {
+  return new Address(address).toScVal();
+}
+
 // ── Launchpad Methods ─────────────────────────────────────────
 
 /**
@@ -53,14 +57,14 @@ export async function deployNormal721(
   salt: Buffer // 32 bytes
 ): Promise<string> {
   const args: xdr.ScVal[] = [
-    nativeToScVal(creatorPublicKey, { type: "address" }),
-    nativeToScVal(currencyAddress, { type: "address" }),
+    toAddressScVal(creatorPublicKey),
+    toAddressScVal(currencyAddress),
     nativeToScVal(name, { type: "string" }),
     nativeToScVal(symbol, { type: "string" }),
     nativeToScVal(BigInt(maxSupply), { type: "u64" }),
     nativeToScVal(royaltyBps, { type: "u32" }),
-    nativeToScVal(royaltyReceiver, { type: "address" }),
-    nativeToScVal(salt, { type: "bytes" }),
+    toAddressScVal(royaltyReceiver),
+    nativeToScVal(Uint8Array.from(salt), { type: "bytes" }),
   ];
 
   const retVal = await invokeContract(
@@ -85,12 +89,12 @@ export async function deployNormal1155(
   salt: Buffer
 ): Promise<string> {
   const args: xdr.ScVal[] = [
-    nativeToScVal(creatorPublicKey, { type: "address" }),
-    nativeToScVal(currencyAddress, { type: "address" }),
+    toAddressScVal(creatorPublicKey),
+    toAddressScVal(currencyAddress),
     nativeToScVal(name, { type: "string" }),
     nativeToScVal(royaltyBps, { type: "u32" }),
-    nativeToScVal(royaltyReceiver, { type: "address" }),
-    nativeToScVal(salt, { type: "bytes" }),
+    toAddressScVal(royaltyReceiver),
+    nativeToScVal(Uint8Array.from(salt), { type: "bytes" }),
   ];
 
   const retVal = await invokeContract(
@@ -118,15 +122,15 @@ export async function deployLazy721(
   salt: Buffer
 ): Promise<string> {
   const args: xdr.ScVal[] = [
-    nativeToScVal(creatorPublicKey, { type: "address" }),
-    nativeToScVal(currencyAddress, { type: "address" }),
-    nativeToScVal(creatorPubkeyBytes, { type: "bytes" }),
+    toAddressScVal(creatorPublicKey),
+    toAddressScVal(currencyAddress),
+    nativeToScVal(Uint8Array.from(creatorPubkeyBytes), { type: "bytes" }),
     nativeToScVal(name, { type: "string" }),
     nativeToScVal(symbol, { type: "string" }),
     nativeToScVal(BigInt(maxSupply), { type: "u64" }),
     nativeToScVal(royaltyBps, { type: "u32" }),
-    nativeToScVal(royaltyReceiver, { type: "address" }),
-    nativeToScVal(salt, { type: "bytes" }),
+    toAddressScVal(royaltyReceiver),
+    nativeToScVal(Uint8Array.from(salt), { type: "bytes" }),
   ];
 
   const retVal = await invokeContract(
@@ -152,13 +156,13 @@ export async function deployLazy1155(
   salt: Buffer
 ): Promise<string> {
   const args: xdr.ScVal[] = [
-    nativeToScVal(creatorPublicKey, { type: "address" }),
-    nativeToScVal(currencyAddress, { type: "address" }),
-    nativeToScVal(creatorPubkeyBytes, { type: "bytes" }),
+    toAddressScVal(creatorPublicKey),
+    toAddressScVal(currencyAddress),
+    nativeToScVal(Uint8Array.from(creatorPubkeyBytes), { type: "bytes" }),
     nativeToScVal(name, { type: "string" }),
     nativeToScVal(royaltyBps, { type: "u32" }),
-    nativeToScVal(royaltyReceiver, { type: "address" }),
-    nativeToScVal(salt, { type: "bytes" }),
+    toAddressScVal(royaltyReceiver),
+    nativeToScVal(Uint8Array.from(salt), { type: "bytes" }),
   ];
 
   const retVal = await invokeContract(
@@ -178,7 +182,7 @@ export async function getCollectionsByCreator(
   creatorPublicKey: string
 ): Promise<CollectionRecord[]> {
   const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
-  const args = [nativeToScVal(creatorPublicKey, { type: "address" })];
+  const args = [toAddressScVal(creatorPublicKey)];
   const retVal = await invokeContract(
     DUMMY_KEY,
     "collections_by_creator",
@@ -295,7 +299,7 @@ export async function mint721(
   metadataCid: string
 ): Promise<number> {
   const args: xdr.ScVal[] = [
-    nativeToScVal(recipient, { type: "address" }),
+    toAddressScVal(recipient),
     nativeToScVal(metadataCid, { type: "string" }),
   ];
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { useCollectionDetail } from "@/hooks/useLaunchpad";
 import { useWalletContext } from "@/context/WalletContext";
@@ -19,7 +20,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
 
       <div className="pt-24 pb-12">
         <div className="max-w-7xl mx-auto px-4">
-          <a
+          <Link
             href="/launchpad/collections"
             className="inline-flex items-center gap-2 text-gray-500 hover:text-brand-500 font-bold transition-colors mb-8 group"
           >
@@ -27,12 +28,12 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
               <ArrowLeft size={20} />
             </div>
             Back to Directory
-          </a>
+          </Link>
 
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 size={48} className="animate-spin text-brand-500" />
-              <p className="text-gray-500 font-medium font-inter">Fetching collection state…</p>
+              <p className="text-gray-500 font-medium font-inter">Fetching collection state...</p>
             </div>
           ) : error ? (
             <div className="rounded-3xl bg-red-50 p-12 text-center border border-red-100">
@@ -41,7 +42,6 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
             </div>
           ) : metadata ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Left Column: Info Card */}
               <div className="lg:col-span-2 space-y-8">
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 md:p-12 shadow-sm">
                   <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -55,7 +55,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
                   <h1 className="text-5xl font-display font-black text-gray-900 mb-6 leading-tight">
                     {metadata.name}
                   </h1>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-50">
                     <div className="flex items-center gap-4">
                       <div className="p-3 rounded-2xl bg-gray-50 text-gray-400">
@@ -82,7 +82,6 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
                   </div>
                 </div>
 
-                {/* Status / Activity Placeholder */}
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                   <h3 className="text-2xl font-display font-bold text-gray-900 mb-6">Inventory</h3>
                   <div className="flex flex-col items-center justify-center py-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
@@ -94,7 +93,6 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
                 </div>
               </div>
 
-              {/* Right Column: Sidebar Stats */}
               <div className="space-y-6">
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                   <h3 className="text-xl font-display font-bold text-gray-900 mb-6">Collection Stats</h3>
