@@ -130,6 +130,14 @@ impl MarketplaceContract {
         env.storage().persistent().set(&key, &new_whitelist);
     }
 
+    pub fn get_token_whitelist(env: Env) -> Vec<Address> {
+        let key = crate::storage::DataKey::TokenWhitelist;
+        env.storage()
+            .persistent()
+            .get::<_, Vec<Address>>(&key)
+            .unwrap_or(Vec::new(&env))
+    }
+
     // ── Listing methods ──────────────────────────────────────
 
     #[allow(clippy::too_many_arguments)]

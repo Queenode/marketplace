@@ -30,7 +30,15 @@ export default function AdminPage() {
     const { isAdmin, isLoading: isCheckingAdmin } = useAdminCheck(publicKey);
     const { stats, isLoading: isLoadingStats, refresh: refreshStats } = useAdminStats();
     const { revoke, reinstate, checkStatus, isProcessing: isModerating } = useModeration(publicKey);
-    const { whitelist, unwhitelist, isProcessing: isManagingTokens } = useTokenManagement(publicKey);
+    const {
+        whitelistedTokens,
+        whitelist,
+        unwhitelist,
+        isLoading: isLoadingTokens,
+        isProcessing: isManagingTokens,
+        error: tokenError,
+        refresh: refreshTokens
+    } = useTokenManagement(publicKey);
 
     // Local state for moderation search
     const [artistSearch, setArtistSearch] = useState("");
@@ -67,8 +75,11 @@ export default function AdminPage() {
         const success = await whitelist(newTokenAddress);
         if (success) {
             setNewTokenAddress("");
-            refreshStats();
         }
+    };
+
+    const handleRemoveToken = async (addr: string) => {
+        await unwhitelist(addr);
     };
 
     if (isCheckingAdmin) {
@@ -110,10 +121,10 @@ export default function AdminPage() {
                         </h1>
                     </div>
                     <button
-                        onClick={() => refreshStats()}
+                        onClick={() => { refreshStats(); refreshTokens(); }}
                         className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-midnight-900 shadow-sm transition-all hover:bg-brand-50 hover:shadow-md border border-brand-100"
                     >
-                        <Loader2 className={`h-4 w-4 ${isLoadingStats ? 'animate-spin' : ''}`} />
+                        <Loader2 className={`h-4 w-4 ${isLoadingStats || isLoadingTokens ? 'animate-spin' : ''}`} />
                         Refresh Data
                     </button>
                 </div>
@@ -297,19 +308,22 @@ export default function AdminPage() {
                                     onClick={handleWhitelistToken}
                                     className="flex items-center gap-2 rounded-xl bg-secondary-dark px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-secondary disabled:opacity-50 shadow-md shadow-secondary/10"
                                 >
-                                    <Plus className="h-4 w-4" />
+                                    {isManagingTokens ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                                     Add
                                 </button>
                             </div>
                         </div>
 
+                        {tokenError && (
+                            <div className="mb-6 flex items-center gap-2 rounded-xl bg-red-50 p-4 text-sm text-red-600 border border-red-100">
+                                <AlertCircle className="h-4 w-4" />
+                                {tokenError}
+                            </div>
+                        )}
+
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {/* Note: In a real app we would fetch the list of whitelisted tokens. 
-                  Since get_whitelisted_tokens helper isn't on the contract yet, we can 
-                  display a placeholder or empty state if needed. 
-                  However, I will implement a list if possible. */}
-                            <div className="rounded-2xl border-2 border-dashed border-gray-100 p-6 transition-all hover:border-mint-200">
-                                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600 font-bold">
+                            <div className="rounded-2xl border-2 border-gray-100 bg-gray-50/20 p-6">
+                                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-brand-600 font-bold">
                                     X
                                 </div>
                                 <h4 className="font-bold text-midnight-950">Native Stellar (XLM)</h4>
@@ -320,11 +334,38 @@ export default function AdminPage() {
                                 </div>
                             </div>
 
-                            {/* Placeholder for whitelisted tokens */}
-                            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-100 p-6 text-center text-gray-400">
-                                <AlertCircle className="mb-2 h-8 w-8 opacity-20" />
-                                <p className="text-xs italic">Use the input above to whitelist specific SRC-20 tokens.</p>
-                            </div>
+                            {whitelistedTokens.map((token) => (
+                                <div key={token} className="group relative rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:border-brand-200 transition-all">
+                                    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-mint-50 text-mint-600 font-bold">
+                                        T
+                                    </div>
+                                    <h4 className="font-bold text-midnight-950 truncate" title={token}>
+                                        {token.slice(0, 8)}...{token.slice(-8)}
+                                    </h4>
+                                    <p className="mt-1 text-xs text-gray-500 font-mono">{token.slice(0, 16)}...</p>
+                                    
+                                    <button
+                                        onClick={() => handleRemoveToken(token)}
+                                        className="absolute right-4 top-4 rounded-lg p-2 text-gray-300 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            ))}
+
+                            {isLoadingTokens && (
+                                <div className="flex h-32 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-50 bg-gray-50/10 p-6 text-center text-gray-400">
+                                    <Loader2 className="h-8 w-8 animate-spin opacity-20 mb-2" />
+                                    <p className="text-xs">Loading tokens…</p>
+                                </div>
+                            )}
+
+                            {!isLoadingTokens && whitelistedTokens.length === 0 && (
+                                <div className="flex h-32 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-100 p-6 text-center text-gray-400">
+                                    <AlertCircle className="mb-2 h-8 w-8 opacity-20" />
+                                    <p className="text-xs italic">No additional SRC-20 tokens whitelisted.</p>
+                                </div>
+                            )}
                         </div>
                     </section>
                 </div>

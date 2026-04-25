@@ -15,7 +15,8 @@ import {
     reinstateArtist,
     isArtistRevoked,
     addTokenToWhitelist,
-    removeTokenFromWhitelist
+    removeTokenFromWhitelist,
+    getTokenWhitelist
 } from "@/lib/contract";
 import { Horizon } from "@stellar/stellar-sdk";
 import { config } from "@/lib/config";
@@ -123,17 +124,42 @@ export function useModeration(adminPublicKey: string | null) {
 }
 
 export function useTokenManagement(adminPublicKey: string | null) {
+    const [whitelistedTokens, setWhitelistedTokens] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const refresh = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const tokens = await getTokenWhitelist();
+            setWhitelistedTokens(tokens);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Failed to load whitelist");
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        refresh();
+    }, [refresh]);
 
     const whitelist = async (tokenAddress: string) => {
         if (!adminPublicKey) return;
         setIsProcessing(true);
         setError(null);
+        
+        // Optimistic update
+        const prev = [...whitelistedTokens];
+        setWhitelistedTokens(curr => [...curr, tokenAddress]);
+
         try {
             await addTokenToWhitelist(adminPublicKey, tokenAddress);
             return true;
         } catch (err: unknown) {
+            setWhitelistedTokens(prev); // Rollback
             setError(err instanceof Error ? err.message : "Whitelist failed");
             return false;
         } finally {
@@ -145,10 +171,16 @@ export function useTokenManagement(adminPublicKey: string | null) {
         if (!adminPublicKey) return;
         setIsProcessing(true);
         setError(null);
+
+        // Optimistic update
+        const prev = [...whitelistedTokens];
+        setWhitelistedTokens(curr => curr.filter(t => t !== tokenAddress));
+
         try {
             await removeTokenFromWhitelist(adminPublicKey, tokenAddress);
             return true;
         } catch (err: unknown) {
+            setWhitelistedTokens(prev); // Rollback
             setError(err instanceof Error ? err.message : "Unwhitelist failed");
             return false;
         } finally {
@@ -156,7 +188,7 @@ export function useTokenManagement(adminPublicKey: string | null) {
         }
     };
 
-    return { whitelist, unwhitelist, isProcessing, error };
+    return { whitelistedTokens, whitelist, unwhitelist, isLoading, isProcessing, error, refresh };
 }
 
 export function useAdminCheck(currentPublicKey: string | null) {

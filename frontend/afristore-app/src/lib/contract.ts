@@ -656,6 +656,20 @@ export async function removeTokenFromWhitelist(
 }
 
 /**
+ * get_token_whitelist — Fetch all whitelisted tokens.
+ */
+export async function getTokenWhitelist(): Promise<string[]> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  try {
+    const retVal = await invokeContract(DUMMY_KEY, "get_token_whitelist", [], true);
+    const native = scValToNative(retVal) as Address[];
+    return native.map(a => a.toString());
+  } catch {
+    return [];
+  }
+}
+
+/**
  * get_treasury — Fetch current treasury address.
  */
 export async function getTreasury(): Promise<string | null> {
