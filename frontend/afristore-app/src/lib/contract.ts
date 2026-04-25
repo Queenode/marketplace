@@ -66,8 +66,8 @@ function getRpc(): SorobanRpc.Server {
   return new SorobanRpc.Server(config.rpcUrl, { allowHttp: false });
 }
 
-function getContract(): Contract {
-  return new Contract(config.contractId);
+export function getContract(contractId: string = config.contractId): Contract {
+  return new Contract(contractId);
 }
 
 function getNetworkPassphrase(): string {
@@ -81,14 +81,15 @@ function getNetworkPassphrase(): string {
  * invocation transaction. Returns the simulation result for read-only
  * calls, or the ledger result for state-changing calls.
  */
-async function invokeContract(
+export async function invokeContract(
   callerPublicKey: string,
   method: string,
   args: xdr.ScVal[],
-  readonly = false
+  readonly = false,
+  contractId: string = config.contractId
 ): Promise<xdr.ScVal> {
   const rpc = getRpc();
-  const contract = getContract();
+  const contract = getContract(contractId);
 
   // Fetch the caller's account for the sequence number.
   const account = await rpc.getAccount(callerPublicKey);
