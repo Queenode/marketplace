@@ -130,3 +130,18 @@ export async function getListingActivity(listingId: number): Promise<ActivityEve
         }, 1000);
     });
 }
+
+export interface CollectionFilter {
+  kind?: string;
+  creator?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getCollections(filter: CollectionFilter = {}) {
+  return new Promise<{ collections: any[]; total: number }>((resolve) => {
+    setTimeout(() => {
+      resolve({ collections: [], total: 0 });
+    }, 800);
+  });
+}
