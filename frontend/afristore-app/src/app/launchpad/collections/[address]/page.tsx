@@ -117,14 +117,21 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ add
                     </div>
                   </div>
 
-                  {isCreator && (
-                    <div className="mt-10 pt-8 border-t border-gray-50">
-                      <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 font-inter">Creator Actions</p>
-                      <button className="w-full flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-white font-bold hover:bg-brand-600 transition-all shadow-lg shadow-brand-500/20">
-                        <Plus size={20} /> Mint New NFT
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-10 pt-8 border-t border-gray-50 space-y-3">
+                    <p className="text-sm font-bold text-gray-400 uppercase tracking-widest font-inter">Mint &amp; redeem</p>
+                    <Link
+                      href={`/launchpad/collections/${address}/mint`}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-white font-bold hover:bg-brand-600 transition-all shadow-lg shadow-brand-500/20"
+                    >
+                      <Plus size={20} />
+                      Open mint / redeem
+                    </Link>
+                    {isCreator && (
+                      <p className="text-xs text-gray-500 font-inter text-center">
+                        As the creator you can mint on normal collections; lazy collections use signed vouchers.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

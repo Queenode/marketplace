@@ -98,6 +98,7 @@ jobs:
         working-directory: frontend/afristore-app
 
       - name: Run Frontend Lint
+        # Runs ESLint directly (see package.json "lint" script); not `next lint`.
         run: npm run lint --if-present
         working-directory: frontend/afristore-app
 

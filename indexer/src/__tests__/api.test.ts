@@ -10,6 +10,7 @@ const mockPrisma = vi.hoisted(() => ({
   },
   marketplaceEvent: {
     findMany: vi.fn(),
+    findFirst: vi.fn(),
   },
 }));
 
@@ -194,5 +195,64 @@ describe('GET /activity/recent', () => {
 
     const res = await request(app).get('/activity/recent');
     expect(res.status).toBe(500);
+  });
+});
+
+// ── GET /wallets/:address/activity ───────────────────────────────────────────
+
+describe('GET /wallets/:address/activity', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns recent events for the wallet (actor or JSON field match)', async () => {
+    const ev = {
+      id: 3,
+      listingId: '9',
+      eventType: 'ARTWORK_SOLD',
+      actor: 'GARTIST',
+      data: { artist: 'GARTIST', buyer: 'GBUYER', price: '100' },
+      ledgerSequence: 99,
+      ledgerTimestamp: new Date('2024-01-15T00:00:00Z'),
+    };
+    mockPrisma.marketplaceEvent.findMany.mockResolvedValue([ev]);
+
+    const res = await request(app).get('/wallets/GBUYER/activity?limit=10');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].eventType).toBe('ARTWORK_SOLD');
+    expect(mockPrisma.marketplaceEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 10,
+        orderBy: { ledgerSequence: 'desc' },
+      })
+    );
+  });
+});
+
+// ── GET /wallets/:address/royalty-stats ──────────────────────────────────────
+
+describe('GET /wallets/:address/royalty-stats', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns totals for sold listings by that artist', async () => {
+    mockPrisma.listing.findMany.mockResolvedValue([
+      { listingId: 1n, price: 100, royaltyBps: 1000 },
+      { listingId: 2n, price: 200, royaltyBps: 500 },
+    ]);
+    mockPrisma.marketplaceEvent.findFirst.mockResolvedValue({
+      id: 1,
+      eventType: 'ARTWORK_SOLD',
+      actor: 'GARTIST',
+      data: {},
+      listingId: 1n,
+      ledgerSequence: 1,
+      ledgerTimestamp: new Date('2024-01-20T00:00:00Z'),
+    });
+
+    const res = await request(app).get('/wallets/GARTIST/royalty-stats');
+
+    expect(res.status).toBe(200);
+    expect(res.body.payoutCount).toBe(2);
+    expect(parseFloat(res.body.totalEarned)).toBeCloseTo(20, 4);
   });
 });

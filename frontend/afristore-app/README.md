@@ -6,7 +6,7 @@ Next.js 14 frontend for the Afristore decentralized African art marketplace.
 
 | Layer | Library |
 |---|---|
-| Framework | Next.js 14 (App Router) |
+| Framework | Next.js 15 (App Router) |
 | Styling | Tailwind CSS |
 | Blockchain | `@stellar/stellar-sdk` |
 | Wallet | `@stellar/freighter-api` |
@@ -85,8 +85,11 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Stellar network passphrase |
 | `PINATA_JWT` | Pinata API JWT (server-side only; never expose publicly) |
 | `NEXT_PUBLIC_PINATA_GATEWAY` | Pinata IPFS gateway URL |
+| `NEXT_PUBLIC_INDEXER_URL` | Base URL of the Afristore indexer API (e.g. `http://localhost:4000` in dev) |
 
 ## Install & Run
+
+Use **Node.js 20.x** (same as CI) for reliable parity with the ESLint 8 + `eslint-config-next` toolchain. Node **18+** is the minimum supported for this app.
 
 ```bash
 npm install
@@ -102,7 +105,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run dev` | Start dev server with hot-reload |
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
-| `npm run lint` | ESLint |
+| `npm run lint` | ESLint (CLI; `next lint` is not used) |
 | `npm run type-check` | TypeScript check (no emit) |
 
 ## Wallet Setup

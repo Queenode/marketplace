@@ -14,12 +14,16 @@ A lightweight off-chain indexer for the Afristore Marketplace Soroban contract. 
 - `GET /listings?owner=<address>` - Get all listings currently owned by a specific wallet.
 - `GET /listings/:id/history` - Get the full event timeline (creation, updates, sales) for a listing.
 - `GET /activity/recent` - Get the latest marketplace activity (sales, new listings).
+- `GET /wallets/<address>/activity?limit=50` - Event feed for a Stellar address (actor + JSON `buyer` / `artist` / … matches).
+- `GET /wallets/<address>/royalty-stats` - Total royalty estimate from **Sold** rows for that artist, plus a simple payout count/last-activity signal.
+
+`vitest` is configured in **`vitest.config.mts`** (ESM) so the suite does not load Vite’s deprecated CJS Node entry point.
 
 ## Setup & Running
 
 ### Prerequisites
 - Docker & Docker Compose
-- Node.js 18+ (for local development)
+- **Node.js 20.x** (used in CI, recommended for the TypeScript + Vitest toolchain; Node 18+ is the minimum for current dependencies)
 
 ### Quick Start with Docker
 1. Update `MARKETPLACE_CONTRACT_ID` in `docker-compose.yml` (or `.env`).

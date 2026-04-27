@@ -210,6 +210,13 @@ export async function getAllCollections(): Promise<CollectionRecord[]> {
   return native.map(parseCollectionRecord);
 }
 
+export async function getCollectionRecordByAddress(
+  collectionAddress: string
+): Promise<CollectionRecord | null> {
+  const all = await getAllCollections();
+  return all.find((c) => c.address === collectionAddress) ?? null;
+}
+
 /**
  * collection_count
  */
@@ -311,4 +318,214 @@ export async function mint721(
     collectionAddress
   );
   return Number(scValToNative(retVal));
+}
+
+function mapKeySymbol(name: string, val: xdr.ScVal): xdr.ScMapEntry {
+  return new xdr.ScMapEntry({
+    key: nativeToScVal(name, { type: "symbol" }),
+    val,
+  });
+}
+
+/**
+ * Mints a new token type in a Normal 1155 collection (creator only).
+ * Wraps `mint_new(to, amount, uri)`.
+ */
+export async function mint1155New(
+  creatorPublicKey: string,
+  collectionAddress: string,
+  recipient: string,
+  amount: bigint,
+  metadataCid: string
+): Promise<number> {
+  const args: xdr.ScVal[] = [
+    toAddressScVal(recipient),
+    nativeToScVal(amount, { type: "u128" }),
+    nativeToScVal(metadataCid, { type: "string" }),
+  ];
+
+  const retVal = await invokeContract(
+    creatorPublicKey,
+    "mint_new",
+    args,
+    false,
+    collectionAddress
+  );
+  return Number(scValToNative(retVal));
+}
+
+// ── Lazy mint vouchers (Soroban `MintVoucher` / `MintVoucher1155`) ─
+
+export interface Lazy721VoucherInput {
+  token_id: string;
+  price: string;
+  currency: string;
+  uri: string;
+  uri_hash: string;
+  valid_until: string;
+}
+
+export interface Lazy1155VoucherInput {
+  token_id: string;
+  buyer_quota: string;
+  price_per_unit: string;
+  currency: string;
+  uri: string;
+  uri_hash: string;
+  valid_until: string;
+}
+
+function parseHex32(label: string, hex: string): Buffer {
+  const t = hex.trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(t)) {
+    throw new Error(`${label} must be exactly 64 hex characters (32 bytes)`);
+  }
+  return Buffer.from(t, "hex");
+}
+
+function parseHexSignature(label: string, hex: string): Buffer {
+  const t = hex.trim();
+  if (!/^[0-9a-fA-F]{128}$/.test(t)) {
+    throw new Error(`${label} must be exactly 128 hex characters (ed25519 signature)`);
+  }
+  return Buffer.from(t, "hex");
+}
+
+function mintVoucher721ToScVal(v: Lazy721VoucherInput): xdr.ScVal {
+  const tokenId = BigInt(v.token_id);
+  const price = BigInt(v.price);
+  const validUntil = BigInt(v.valid_until);
+  const hashBuf = parseHex32("uri_hash", v.uri_hash);
+  if (v.uri.length === 0) throw new Error("uri is required");
+  if (!v.currency || !v.currency.startsWith("C")) {
+    throw new Error("currency must be a Stellar contract address (SAC), e.g. the XLM SAC");
+  }
+  return xdr.ScVal.scvMap([
+    mapKeySymbol("token_id", nativeToScVal(tokenId, { type: "u64" })),
+    mapKeySymbol("price", nativeToScVal(price, { type: "i128" })),
+    mapKeySymbol("currency", toAddressScVal(v.currency)),
+    mapKeySymbol("uri", nativeToScVal(v.uri, { type: "string" })),
+    mapKeySymbol(
+      "uri_hash",
+      nativeToScVal(Uint8Array.from(hashBuf), { type: "bytes" })
+    ),
+    mapKeySymbol("valid_until", nativeToScVal(validUntil, { type: "u64" })),
+  ]);
+}
+
+function mintVoucher1155ToScVal(v: Lazy1155VoucherInput): xdr.ScVal {
+  const tokenId = BigInt(v.token_id);
+  const buyerQuota = BigInt(v.buyer_quota);
+  const pricePer = BigInt(v.price_per_unit);
+  const validUntil = BigInt(v.valid_until);
+  const hashBuf = parseHex32("uri_hash", v.uri_hash);
+  if (v.uri.length === 0) throw new Error("uri is required");
+  if (!v.currency || !v.currency.startsWith("C")) {
+    throw new Error("currency must be a Stellar contract address (SAC)");
+  }
+  return xdr.ScVal.scvMap([
+    mapKeySymbol("token_id", nativeToScVal(tokenId, { type: "u64" })),
+    mapKeySymbol("buyer_quota", nativeToScVal(buyerQuota, { type: "u128" })),
+    mapKeySymbol("price_per_unit", nativeToScVal(pricePer, { type: "i128" })),
+    mapKeySymbol("currency", toAddressScVal(v.currency)),
+    mapKeySymbol("uri", nativeToScVal(v.uri, { type: "string" })),
+    mapKeySymbol(
+      "uri_hash",
+      nativeToScVal(Uint8Array.from(hashBuf), { type: "bytes" })
+    ),
+    mapKeySymbol("valid_until", nativeToScVal(validUntil, { type: "u64" })),
+  ]);
+}
+
+/**
+ * Redeem a lazy-mint 721 voucher (buyer must sign; pays creator when price &gt; 0).
+ */
+export async function redeemLazy721(
+  buyerPublicKey: string,
+  collectionAddress: string,
+  voucher: Lazy721VoucherInput,
+  signatureHex: string
+): Promise<number> {
+  const vsc = mintVoucher721ToScVal(voucher);
+  const sig = parseHexSignature("signature", signatureHex);
+  const args: xdr.ScVal[] = [
+    toAddressScVal(buyerPublicKey),
+    vsc,
+    nativeToScVal(Uint8Array.from(sig), { type: "bytes" }),
+  ];
+  const retVal = await invokeContract(
+    buyerPublicKey,
+    "redeem",
+    args,
+    false,
+    collectionAddress
+  );
+  return Number(scValToNative(retVal));
+}
+
+/**
+ * Redeem a lazy-mint 1155 voucher for `amount` units.
+ */
+export async function redeemLazy1155(
+  buyerPublicKey: string,
+  collectionAddress: string,
+  voucher: Lazy1155VoucherInput,
+  amount: bigint,
+  signatureHex: string
+): Promise<void> {
+  const vsc = mintVoucher1155ToScVal(voucher);
+  const sig = parseHexSignature("signature", signatureHex);
+  const args: xdr.ScVal[] = [
+    toAddressScVal(buyerPublicKey),
+    vsc,
+    nativeToScVal(amount, { type: "u128" }),
+    nativeToScVal(Uint8Array.from(sig), { type: "bytes" }),
+  ];
+  await invokeContract(buyerPublicKey, "redeem", args, false, collectionAddress);
+}
+
+function readJsonObject(json: string, label: string): Record<string, unknown> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new Error(`${label} is not valid JSON`);
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return raw as Record<string, unknown>;
+}
+
+function fieldString(o: Record<string, unknown>, key: string, label: string): string {
+  const v = o[key];
+  if (v === undefined || v === null) {
+    throw new Error(`${label}: missing "${key}"`);
+  }
+  return String(v);
+}
+
+export function parseLazy721VoucherJson(json: string): Lazy721VoucherInput {
+  const o = readJsonObject(json, "Voucher");
+  return {
+    token_id: fieldString(o, "token_id", "Voucher"),
+    price: fieldString(o, "price", "Voucher"),
+    currency: fieldString(o, "currency", "Voucher"),
+    uri: fieldString(o, "uri", "Voucher"),
+    uri_hash: fieldString(o, "uri_hash", "Voucher"),
+    valid_until: fieldString(o, "valid_until", "Voucher"),
+  };
+}
+
+export function parseLazy1155VoucherJson(json: string): Lazy1155VoucherInput {
+  const o = readJsonObject(json, "Voucher");
+  return {
+    token_id: fieldString(o, "token_id", "Voucher"),
+    buyer_quota: fieldString(o, "buyer_quota", "Voucher"),
+    price_per_unit: fieldString(o, "price_per_unit", "Voucher"),
+    currency: fieldString(o, "currency", "Voucher"),
+    uri: fieldString(o, "uri", "Voucher"),
+    uri_hash: fieldString(o, "uri_hash", "Voucher"),
+    valid_until: fieldString(o, "valid_until", "Voucher"),
+  };
 }
