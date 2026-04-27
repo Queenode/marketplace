@@ -86,5 +86,65 @@ router.get('/creators/:address/collections', async (req: Request, res: Response)
     }
 });
 
+// GET /wallets/:address/activity — events relevant to a Stellar account
+router.get('/wallets/:address/activity', async (req: Request, res: Response) => {
+    const { address } = req.params;
+    const take = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 200);
+    try {
+        const jsonKeys = ['buyer', 'artist', 'offerer', 'bidder', 'winner', 'creator'];
+        const fromJson = jsonKeys.map((path) => ({
+            data: { path: [path], equals: address },
+        }));
+
+        const events = await prisma.marketplaceEvent.findMany({
+            where: {
+                OR: [{ actor: address }, ...fromJson],
+            },
+            orderBy: { ledgerSequence: 'desc' },
+            take,
+        });
+
+        res.json(serialize(events));
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch wallet activity' });
+    }
+});
+
+// GET /wallets/:address/royalty-stats — aggregates royalty-bearing sales for an artist
+router.get('/wallets/:address/royalty-stats', async (req: Request, res: Response) => {
+    const { address } = req.params;
+    try {
+        const sold = await prisma.listing.findMany({
+            where: { artist: address as string, status: 'Sold' },
+            select: {
+                listingId: true,
+                price: true,
+                royaltyBps: true,
+            },
+        });
+
+        let totalEarned = 0;
+        for (const row of sold) {
+            const p = Number(row.price);
+            totalEarned += (p * row.royaltyBps) / 10000;
+        }
+
+        const lastEvent = await prisma.marketplaceEvent.findFirst({
+            where: { eventType: 'ARTWORK_SOLD', actor: address as string },
+            orderBy: { ledgerSequence: 'desc' },
+        });
+
+        res.json({
+            totalEarned: totalEarned.toFixed(7),
+            payoutCount: sold.length,
+            lastPayout: lastEvent?.ledgerTimestamp
+                ? new Date(lastEvent.ledgerTimestamp).getTime()
+                : 0,
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch royalty stats' });
+    }
+});
+
 export default router;
 

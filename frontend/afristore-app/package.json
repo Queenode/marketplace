@@ -6,10 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "test": "jest --passWithNoTests",
-    "test:coverage": "jest --coverage --passWithNoTests"
+    "lint": "node node_modules/eslint/bin/eslint.js .",
+    "type-check": "node node_modules/typescript/bin/tsc --noEmit",
+    "test": "node node_modules/jest/bin/jest.js --passWithNoTests",
+    "test:coverage": "node node_modules/jest/bin/jest.js --coverage --passWithNoTests"
   },
   "dependencies": {
     "@stellar/freighter-api": "^2.0.0",
