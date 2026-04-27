@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: require('path').resolve(__dirname, '../../'),
   reactStrictMode: true,
   images: {
     remotePatterns: [

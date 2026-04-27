@@ -17,13 +17,13 @@ jest.mock('next/link', () => ({
   ),
 }));
 
-// Next.js Image — render as a plain <img>
+// Next.js Image — render as a plain <img> with valid alt handling
 jest.mock('next/image', () => ({
   __esModule: true,
   default: (props: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => {
-    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-    const { fill: _fill, ...rest } = props;
-    return <img {...rest} />;
+    // Remove non-standard props and ensure alt is always present
+    const { fill: _fill, alt, ...rest } = props;
+    return <img alt={alt || ''} {...rest} />;
   },
 }));
 

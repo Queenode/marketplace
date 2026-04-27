@@ -7,7 +7,7 @@ import { Loader2, Rocket, CheckCircle, ArrowRight } from "lucide-react";
 import { GuardButton } from "./WalletGuard";
 import { CollectionKind } from "@/lib/launchpad";
 import { SUPPORTED_TOKENS, DEFAULT_TOKEN } from "@/config/tokens";
-import { StrKey } from "@stellar/stellar-sdk";
+
 
 export function CollectionForm() {
   const { publicKey } = useWalletContext();
@@ -36,7 +36,9 @@ export function CollectionForm() {
     // If it's a lazy collection, we need the pubkey bytes
     if (form.kind.startsWith("LazyMint")) {
       try {
-        const decoded = StrKey.decodeEd25519PublicKey(publicKey);
+        // Dynamically import StrKey to avoid Node deps in initial bundle
+        const sdk = await import("@stellar/stellar-sdk");
+        const decoded = sdk.StrKey.decodeEd25519PublicKey(publicKey);
         input.creatorPubkeyBytes = Buffer.from(decoded);
       } catch (err) {
         console.error("Failed to decode public key", err);

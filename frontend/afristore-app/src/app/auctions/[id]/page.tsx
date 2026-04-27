@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { getAuction, stroopsToXlm, Auction } from "@/lib/contract";
@@ -32,7 +32,8 @@ export default function AuctionDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAuction = async () => {
+
+  const loadAuction = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -45,11 +46,11 @@ export default function AuctionDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) loadAuction();
-  }, [id]);
+  }, [id, loadAuction]);
 
   const handleRefresh = async () => {
     try {
