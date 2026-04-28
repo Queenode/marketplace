@@ -32,17 +32,18 @@ export function ListingCard({ listing, onPurchased }: ListingCardProps) {
 
   const [metadata, setMetadata] = useState<ArtworkMetadata | null>(null);
   const [imgError, setImgError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Resolve metadata from IPFS on mount.
   useEffect(() => {
+    setIsLoading(true);
     fetchMetadata(listing.metadata_cid)
       .then(setMetadata)
-      .catch(() => setMetadata(null));
+      .catch(() => setMetadata(null))
+      .finally(() => setIsLoading(false));
   }, [listing.metadata_cid]);
 
-  const imageUrl = metadata?.image
-    ? cidToGatewayUrl(metadata.image)
-    : "/placeholder-art.svg";
+  const imageUrl = metadata?.image ? cidToGatewayUrl(metadata.image) : null;
 
   const isOwn = publicKey === listing.artist;
 
@@ -56,7 +57,11 @@ export function ListingCard({ listing, onPurchased }: ListingCardProps) {
       {/* Image */}
       <Link href={`/listings/${listing.listing_id}`}>
         <div className="relative aspect-square overflow-hidden bg-brand-50">
-          {!imgError ? (
+          {isLoading ? (
+            <div className="flex h-full w-full items-center justify-center bg-gray-100 animate-pulse" aria-label="Loading artwork" data-testid="artwork-loading">
+              <span className="sr-only">Loading artwork...</span>
+            </div>
+          ) : imageUrl && !imgError ? (
             <Image
               src={imageUrl}
               alt={metadata?.title ?? `Listing #${listing.listing_id}`}
@@ -66,8 +71,9 @@ export function ListingCard({ listing, onPurchased }: ListingCardProps) {
               unoptimized
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-5xl">
-              🖼️
+            <div className="flex h-full w-full flex-col items-center justify-center bg-gray-50 text-gray-400" aria-label="Artwork missing" data-testid="artwork-missing">
+              <span className="text-4xl mb-2">🖼️</span>
+              <span className="text-xs font-medium uppercase tracking-wider">No Artwork</span>
             </div>
           )}
 
