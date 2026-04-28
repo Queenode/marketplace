@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDeployCollection, DeployCollectionInput } from "@/hooks/useLaunchpad";
 import { useWalletContext } from "@/context/WalletContext";
 import { Loader2, Rocket, CheckCircle, ArrowRight } from "lucide-react";
 import { GuardButton } from "./WalletGuard";
 import { CollectionKind } from "@/lib/launchpad";
-import { SUPPORTED_TOKENS, DEFAULT_TOKEN } from "@/config/tokens";
-
+import { DEFAULT_TOKEN } from "@/config/tokens";
+import { useSupportedTokens } from "@/hooks/useSupportedTokens";
+import { getDefaultSupportedToken } from "@/lib/token-support";
 
 export function CollectionForm() {
   const { publicKey } = useWalletContext();
   const { deploy, isDeploying, error } = useDeployCollection(publicKey);
+  const { tokens: supportedTokens } = useSupportedTokens();
+  const hasSupportedTokens = supportedTokens.length > 0;
 
   const [successAddress, setSuccessAddress] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -23,6 +26,19 @@ export function CollectionForm() {
     royaltyReceiver: publicKey || "",
     currencyAddress: DEFAULT_TOKEN.address,
   });
+
+  useEffect(() => {
+    if (supportedTokens.length === 0) {
+      return;
+    }
+
+    if (!supportedTokens.some((token) => token.address === form.currencyAddress)) {
+      setForm((current) => ({
+        ...current,
+        currencyAddress: getDefaultSupportedToken(supportedTokens).address,
+      }));
+    }
+  }, [form.currencyAddress, supportedTokens]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,15 +217,20 @@ export function CollectionForm() {
               </label>
               <select
                 required
+                disabled={!hasSupportedTokens}
                 value={form.currencyAddress}
                 onChange={(e) => setForm({ ...form, currencyAddress: e.target.value })}
                 className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
               >
-                {SUPPORTED_TOKENS.map((token) => (
-                  <option key={token.address} value={token.address}>
-                    {token.name} ({token.symbol})
-                  </option>
-                ))}
+                {hasSupportedTokens ? (
+                  supportedTokens.map((token) => (
+                    <option key={token.address} value={token.address}>
+                      {token.name} ({token.symbol})
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No supported tokens available</option>
+                )}
               </select>
             </div>
 
@@ -234,7 +255,7 @@ export function CollectionForm() {
 
           <GuardButton
             type="submit"
-            disabled={isDeploying}
+            disabled={isDeploying || !hasSupportedTokens}
             actionName="to deploy your collection"
             className="w-full flex items-center justify-center gap-3 rounded-2xl bg-brand-500 py-5 text-xl font-bold text-white shadow-2xl shadow-brand-500/30 hover:bg-brand-600 hover:scale-[1.01] transition-all active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
           >

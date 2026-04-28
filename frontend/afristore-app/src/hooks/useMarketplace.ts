@@ -16,6 +16,7 @@ import {
   Listing,
 } from "@/lib/contract";
 import { uploadImageToIPFS, uploadMetadataToIPFS, ArtworkMetadata } from "@/lib/ipfs";
+import { assertSupportedTokenAddress } from "@/lib/token-support";
 
 // ── Listing with resolved metadata ───────────────────────────
 
@@ -111,6 +112,9 @@ export function useCreateListing(artistPublicKey: string | null) {
       setError(null);
 
       try {
+        setProgress("Validating payment token…");
+        const token = await assertSupportedTokenAddress(input.tokenAddress, "listing");
+
         // Step 1: Upload image to IPFS.
         setProgress("Uploading image to IPFS…");
         const imageResult = await uploadImageToIPFS(input.imageFile, input.title);
@@ -135,7 +139,7 @@ export function useCreateListing(artistPublicKey: string | null) {
           artistPublicKey,
           metadataResult.cid,
           input.price,
-          input.tokenAddress,
+          token.address,
           input.royaltyBps
         );
 
@@ -224,6 +228,7 @@ export interface UpdateListingInput {
   year: string;
   category: string;
   price: number;
+  originalTokenAddress: string;
   tokenAddress: string;
   imageFile?: File; // Optional: only if updating the image
   currentMetadata: ArtworkMetadata;
@@ -245,6 +250,13 @@ export function useUpdateListing(artistPublicKey: string | null) {
       setError(null);
 
       try {
+        if (input.tokenAddress !== input.originalTokenAddress) {
+          throw new Error("Updating the payment token for an existing listing is not supported.");
+        }
+
+        setProgress("Validating payment token…");
+        const token = await assertSupportedTokenAddress(input.tokenAddress, "listing");
+
         let imageCid = input.currentMetadata.image;
 
         // Step 1: Upload new image to IPFS if provided.
@@ -275,7 +287,7 @@ export function useUpdateListing(artistPublicKey: string | null) {
           input.listingId,
           metadataResult.cid,
           input.price,
-          input.tokenAddress
+          token.address
         );
 
         setProgress("Listing updated successfully!");
