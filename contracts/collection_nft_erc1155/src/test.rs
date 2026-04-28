@@ -1,6 +1,5 @@
 extern crate std;
 
-use std::format;
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
