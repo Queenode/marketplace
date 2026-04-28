@@ -217,6 +217,40 @@ describe('ListingCard', () => {
       expect(screen.getByText('Artwork #99')).toBeInTheDocument();
     });
   });
+
+  it('renders a loading state initially', async () => {
+    const { fetchMetadata } = jest.requireMock('@/lib/ipfs');
+    let resolvePromise: any;
+    fetchMetadata.mockReturnValueOnce(new Promise((resolve) => { resolvePromise = resolve; }));
+    
+    render(<ListingCard listing={makeListing()} />);
+    expect(screen.getByTestId('artwork-loading')).toBeInTheDocument();
+    
+    resolvePromise({ title: 'Delayed Title' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('artwork-loading')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders the missing artwork fallback when metadata lacks an image', async () => {
+    const { fetchMetadata } = jest.requireMock('@/lib/ipfs');
+    fetchMetadata.mockResolvedValueOnce({ title: 'No Image', description: 'desc' });
+    
+    render(<ListingCard listing={makeListing()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('artwork-missing')).toBeInTheDocument();
+    });
+  });
+
+  it('renders the missing artwork fallback when metadata fetch fails', async () => {
+    const { fetchMetadata } = jest.requireMock('@/lib/ipfs');
+    fetchMetadata.mockRejectedValueOnce(new Error('IPFS down'));
+    
+    render(<ListingCard listing={makeListing()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('artwork-missing')).toBeInTheDocument();
+    });
+  });
 });
 
 // ── Image mock regression (#105) ──────────────────────────────────────────────
