@@ -55,15 +55,20 @@ export async function loginWithMagicLink(email: string): Promise<MagicAccount> {
     const didToken = await magic.auth.loginWithMagicLink({ email });
     
     // Get user metadata
-    const userMetadata = await magic.user.getMetadata();
+    const userMetadata = await magic.user.getInfo();
     
-    if (!userMetadata.publicAddress) {
+    // The Magic SDK might return different property names
+    const publicAddress = (userMetadata as any).publicAddress || 
+                         (userMetadata as any).walletAddress || 
+                         (userMetadata as any).address;
+    
+    if (!publicAddress) {
       throw new Error("Failed to get public address from Magic");
     }
 
     return {
       email: userMetadata.email || email,
-      publicAddress: userMetadata.publicAddress,
+      publicAddress: publicAddress,
       isLoggedIn: true,
     };
   } catch (err) {
@@ -79,19 +84,29 @@ export async function loginWithPasskey(): Promise<MagicAccount> {
   try {
     const magic = getMagicInstance();
     
-    // Attempt passkey login
-    const didToken = await magic.auth.loginWithPasskey();
+    // Attempt passkey login (if available)
+    let didToken;
+    try {
+      didToken = await (magic.auth as any).loginWithPasskey?.();
+    } catch (e) {
+      throw new Error("Passkey login is not available or failed");
+    }
     
     // Get user metadata
-    const userMetadata = await magic.user.getMetadata();
+    const userMetadata = await magic.user.getInfo();
     
-    if (!userMetadata.publicAddress) {
+    // The Magic SDK might return different property names
+    const publicAddress = (userMetadata as any).publicAddress || 
+                         (userMetadata as any).walletAddress || 
+                         (userMetadata as any).address;
+    
+    if (!publicAddress) {
       throw new Error("Failed to get public address from Magic");
     }
 
     return {
       email: userMetadata.email || "passkey-user",
-      publicAddress: userMetadata.publicAddress,
+      publicAddress: publicAddress,
       isLoggedIn: true,
     };
   } catch (err) {
@@ -112,11 +127,16 @@ export async function getMagicUserMetadata(): Promise<MagicAccount | null> {
       return null;
     }
 
-    const userMetadata = await magic.user.getMetadata();
+    const userMetadata = await magic.user.getInfo();
+    
+    // The Magic SDK might return different property names
+    const publicAddress = (userMetadata as any).publicAddress || 
+                         (userMetadata as any).walletAddress || 
+                         (userMetadata as any).address || "";
     
     return {
       email: userMetadata.email || "unknown",
-      publicAddress: userMetadata.publicAddress || "",
+      publicAddress: publicAddress,
       isLoggedIn: true,
     };
   } catch (err) {
@@ -149,9 +169,14 @@ export async function signWithMagic(txXdr: string): Promise<string> {
     // For Stellar, we need to use the underlying Ethereum-like signing capability
     // and map it to Stellar's signing requirements
     
+    const userMetadata = await magic.user.getInfo();
+    const publicAddress = (userMetadata as any).publicAddress || 
+                         (userMetadata as any).walletAddress || 
+                         (userMetadata as any).address;
+    
     const signature = await magic.rpcProvider?.request({
       method: "personal_sign",
-      params: [txXdr, magic.user.getMetadata()],
+      params: [txXdr, publicAddress],
     });
 
     if (!signature || typeof signature !== "string") {

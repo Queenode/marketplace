@@ -87,7 +87,7 @@ export default function LaunchpadAdminPage() {
             Admin Access Required
           </h1>
           <p className="text-gray-500 font-inter">
-            You need to be the launchpad admin to access this page. Make sure you're connected with the correct wallet.
+            You need to be the launchpad admin to access this page. Make sure you&apos;re connected with the correct wallet.
           </p>
         </div>
       </div>

@@ -34,7 +34,7 @@ export default function MyCollectionsPage() {
                 My Collections
               </h1>
               <p className="text-gray-500 max-w-2xl text-center font-inter text-lg">
-                Connect your wallet to view and manage the NFT collections you've created on the Afristore Launchpad.
+                Connect your wallet to view and manage the NFT collections you&apos;ve created on the Afristore Launchpad.
               </p>
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-4">Please connect your wallet to continue</p>
@@ -62,7 +62,7 @@ export default function MyCollectionsPage() {
                   Your Created Collections
                 </h1>
                 <p className="text-gray-500 max-w-2xl font-inter text-lg">
-                  Manage and monitor the NFT collections you've deployed on the Afristore Launchpad.
+                  Manage and monitor the NFT collections you&apos;ve deployed on the Afristore Launchpad.
                 </p>
               </div>
               <Link
