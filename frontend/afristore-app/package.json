@@ -12,11 +12,13 @@
     "test:coverage": "node node_modules/jest/bin/jest.js --coverage --passWithNoTests"
   },
   "dependencies": {
+    "@magic-sdk/admin": "^2.8.2",
     "@stellar/freighter-api": "^2.0.0",
     "@stellar/stellar-sdk": "^12.3.0",
     "axios": "^1.15.2",
     "clsx": "^2.1.1",
     "lucide-react": "^0.396.0",
+    "magic-sdk": "^33.7.0",
     "next": "^15.5.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
