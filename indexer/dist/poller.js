@@ -1,21 +1,28 @@
-import { rpc } from '@stellar/stellar-sdk';
-import prisma from './db';
-import { parseMarketplaceEvent } from './parser';
-import dotenv from 'dotenv';
-dotenv.config();
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.startPolling = startPolling;
+exports.processEvent = processEvent;
+const stellar_sdk_1 = require("@stellar/stellar-sdk");
+const db_js_1 = __importDefault(require("./db.js"));
+const parser_js_1 = require("./parser.js");
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 const RPC_URL = process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org';
 const CONTRACT_ID = process.env.MARKETPLACE_CONTRACT_ID || '';
 const LAUNCHPAD_CONTRACT_ID = process.env.LAUNCHPAD_CONTRACT_ID || '';
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '5000');
-const server = new rpc.Server(RPC_URL);
-export async function startPolling() {
+const server = new stellar_sdk_1.rpc.Server(RPC_URL);
+async function startPolling() {
     console.log(`Starting indexer poller for contract: ${CONTRACT_ID}`);
     while (true) {
         try {
             // 1. Get last indexed ledger
-            let syncState = await prisma.syncState.findUnique({ where: { id: 1 } });
+            let syncState = await db_js_1.default.syncState.findUnique({ where: { id: 1 } });
             if (!syncState) {
-                syncState = await prisma.syncState.create({ data: { id: 1, lastLedger: 0 } });
+                syncState = await db_js_1.default.syncState.create({ data: { id: 1, lastLedger: 0 } });
             }
             // 2. Fetch network state to know current ledger
             // const networkDetails = await server.getNetwork();
@@ -40,7 +47,7 @@ export async function startPolling() {
                             return t; // Already a string/base64
                         return t.toXDR('base64'); // If it's an ScVal object
                     });
-                    const decoded = parseMarketplaceEvent(topicStrings, typeof event.value === 'string' ? event.value : event.value.toXDR('base64'), event.ledger);
+                    const decoded = (0, parser_js_1.parseMarketplaceEvent)(topicStrings, typeof event.value === 'string' ? event.value : event.value.toXDR('base64'), event.ledger);
                     if (decoded) {
                         await processEvent(decoded);
                     }
@@ -48,7 +55,7 @@ export async function startPolling() {
                         maxLedger = event.ledger;
                 }
                 // Update sync state
-                await prisma.syncState.update({
+                await db_js_1.default.syncState.update({
                     where: { id: 1 },
                     data: { lastLedger: maxLedger },
                 });
@@ -63,7 +70,7 @@ export async function startPolling() {
 async function processEvent(event) {
     const { eventType, listingId, actor, ledgerSequence, data } = event;
     // 1. Log to MarketplaceEvent history
-    await prisma.marketplaceEvent.create({
+    await db_js_1.default.marketplaceEvent.create({
         data: {
             listingId,
             eventType,
@@ -77,7 +84,7 @@ async function processEvent(event) {
         return;
     switch (eventType) {
         case 'LISTING_CREATED':
-            await prisma.listing.upsert({
+            await db_js_1.default.listing.upsert({
                 where: { listingId },
                 create: {
                     listingId,
@@ -102,7 +109,7 @@ async function processEvent(event) {
             });
             break;
         case 'LISTING_UPDATED':
-            await prisma.listing.update({
+            await db_js_1.default.listing.update({
                 where: { listingId },
                 data: {
                     price: data.new_price,
@@ -112,7 +119,7 @@ async function processEvent(event) {
             });
             break;
         case 'ARTWORK_SOLD':
-            await prisma.listing.update({
+            await db_js_1.default.listing.update({
                 where: { listingId },
                 data: {
                     status: 'Sold',
@@ -122,7 +129,7 @@ async function processEvent(event) {
             });
             break;
         case 'LISTING_CANCELLED':
-            await prisma.listing.update({
+            await db_js_1.default.listing.update({
                 where: { listingId },
                 data: {
                     status: 'Cancelled',
@@ -133,7 +140,7 @@ async function processEvent(event) {
         // For Auctions and Offers, we might add more logic or separate tables if needed.
         // For now, we mainly update listing status if an auction starts.
         case 'AUCTION_CREATED':
-            await prisma.listing.update({
+            await db_js_1.default.listing.update({
                 where: { listingId },
                 data: {
                     status: 'Auction',
@@ -156,7 +163,7 @@ async function processEvent(event) {
             const creatorAddr = rawData[0]?.toString() || actor;
             const contractAddr = rawData[1]?.toString() || '';
             if (contractAddr) {
-                await prisma.collection.upsert({
+                await db_js_1.default.collection.upsert({
                     where: { contractAddress: contractAddr },
                     create: {
                         contractAddress: contractAddr,

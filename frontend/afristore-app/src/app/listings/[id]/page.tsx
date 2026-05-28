@@ -516,7 +516,7 @@ export default function ListingDetailPage() {
                                     </div>
                                 )}
 
-                                {status === "Sold" || status === "Finalized" && (
+                                {(status === "Sold" || status === "Finalized") && (
                                     <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-center">
                                         <p className="text-white/40 font-bold italic">
                                             This asset has been privateley collected.

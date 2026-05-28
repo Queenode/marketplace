@@ -16,6 +16,8 @@ pub const OFFER_WITHDRAWN: Symbol = symbol_short!("ofr_wdrn");
 pub const ROYALTY_PAID: Symbol = symbol_short!("roy_paid");
 pub const ARTIST_REVOKED: Symbol = symbol_short!("art_rvkd");
 pub const ARTIST_REINSTATED: Symbol = symbol_short!("art_rnst");
+pub const CONTRACT_PAUSED: Symbol = symbol_short!("ctr_psd");
+pub const CONTRACT_UNPAUSED: Symbol = symbol_short!("ctr_unpsd");
 
 // Event data structs
 // Event data structs

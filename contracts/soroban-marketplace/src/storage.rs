@@ -22,6 +22,7 @@ pub enum DataKey {
     OffererOffers(Address),
     ListingLock(u64),
     AuctionLock(u64),
+    IsPaused,
 }
 
 const LEDGER_TTL_BUMP: u32 = 432_000;
@@ -290,4 +291,22 @@ pub fn acquire_auction_lock(env: &Env, auction_id: u64) -> bool {
 pub fn release_auction_lock(env: &Env, auction_id: u64) {
     let key = DataKey::AuctionLock(auction_id);
     env.storage().persistent().remove(&key);
+}
+
+// ── Pause/Unpause Mechanism ──────────────────────────────────
+
+pub fn set_paused(env: &Env, paused: bool) {
+    env.storage().persistent().set(&DataKey::IsPaused, &paused);
+    env.storage().persistent().extend_ttl(
+        &DataKey::IsPaused,
+        LEDGER_TTL_THRESHOLD,
+        LEDGER_TTL_BUMP,
+    );
+}
+
+pub fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .persistent()
+        .get::<DataKey, bool>(&DataKey::IsPaused)
+        .unwrap_or(false)
 }

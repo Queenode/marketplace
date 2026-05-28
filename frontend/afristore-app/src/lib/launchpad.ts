@@ -233,7 +233,7 @@ export async function getCollectionCount(): Promise<number> {
 }
 
 /**
- * get_platform_fee
+ * platform_fee
  */
 export async function getPlatformFee(): Promise<PlatformFee> {
   const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
@@ -249,6 +249,59 @@ export async function getPlatformFee(): Promise<PlatformFee> {
     receiver: native[0].toString(),
     bps: Number(native[1]),
   };
+}
+
+/**
+ * admin
+ */
+export async function getLaunchpadAdmin(): Promise<string> {
+  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const retVal = await invokeContract(
+    DUMMY_KEY,
+    "admin",
+    [],
+    true,
+    config.launchpadContractId
+  );
+  return (scValToNative(retVal) as Address).toString();
+}
+
+/**
+ * transfer_admin
+ */
+export async function transferLaunchpadAdmin(
+  adminPublicKey: string,
+  newAdminAddress: string
+): Promise<void> {
+  const args = [toAddressScVal(newAdminAddress)];
+  await invokeContract(
+    adminPublicKey,
+    "transfer_admin",
+    args,
+    false,
+    config.launchpadContractId
+  );
+}
+
+/**
+ * update_platform_fee
+ */
+export async function updatePlatformFee(
+  adminPublicKey: string,
+  receiverAddress: string,
+  feeBps: number
+): Promise<void> {
+  const args = [
+    toAddressScVal(receiverAddress),
+    nativeToScVal(feeBps, { type: "u32" }),
+  ];
+  await invokeContract(
+    adminPublicKey,
+    "update_platform_fee",
+    args,
+    false,
+    config.launchpadContractId
+  );
 }
 
 // ── Collection-Specific Methods ───────────────────────────────

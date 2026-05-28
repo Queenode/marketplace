@@ -334,3 +334,34 @@ export async function getCollections(
     return { collections: [], total: 0 };
   }
 }
+
+/**
+ * Fetch royalty stats for an artist (alias for getRoyaltyStats for server-side usage)
+ */
+export async function fetchRoyaltyStats(
+  publicKey: string
+): Promise<RoyaltyStatsResponse> {
+  return getRoyaltyStats(publicKey);
+}
+
+/**
+ * Fetch artist listings from the indexer
+ */
+export async function fetchArtistListings(
+  publicKey: string
+): Promise<any[]> {
+  if (!isNonEmptyString(publicKey)) return [];
+  try {
+    const data = await fetchWithRetry<unknown>(
+      `/listings?artist=${encodeURIComponent(publicKey)}`
+    );
+    if (Array.isArray(data)) return data;
+    return [];
+  } catch (e) {
+    console.warn(
+      "[indexer] fetchArtistListings:",
+      e instanceof Error ? e.message : e
+    );
+    return [];
+  }
+}

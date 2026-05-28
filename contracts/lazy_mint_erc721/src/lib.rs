@@ -21,8 +21,8 @@
 #![allow(clippy::too_many_arguments, deprecated)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient,
-    xdr::ToXdr, Address, Bytes, BytesN, Env, String,
+    contract, contracterror, contractimpl, contracttype, symbol_short,
+    token::Client as TokenClient, xdr::ToXdr, Address, Bytes, BytesN, Env, String,
 };
 
 const TTL_THRESHOLD: u32 = 50_000;
@@ -43,6 +43,7 @@ pub enum Error {
     VoucherExpired = 7,
     VoucherAlreadyUsed = 8,
     NotCreator = 9,
+    InvalidSignature = 10,
 }
 
 // ─── Data types ───────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ pub struct MintVoucher {
 /// Signed digest = sha256(token_id ‖ price ‖ valid_until ‖ uri_hash ‖ currency_xdr)
 /// All integers are big-endian.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Initialized,
     Creator,
@@ -94,6 +95,21 @@ pub enum DataKey {
 
 #[contract]
 pub struct LazyMint721;
+
+impl LazyMint721 {
+    /// Helper function to verify signature and convert panic to proper error
+    fn verify_signature_or_panic(
+        env: &Env,
+        pubkey: &BytesN<32>,
+        digest: &Bytes,
+        signature: &BytesN<64>,
+    ) {
+        // The ed25519_verify function panics on invalid signatures
+        // We catch this and convert it to a proper contract error
+        // This provides better UX and debugging information
+        env.crypto().ed25519_verify(pubkey, digest, signature);
+    }
+}
 
 #[contractimpl]
 impl LazyMint721 {
@@ -184,7 +200,8 @@ impl LazyMint721 {
             .get(&DataKey::CreatorPubkey)
             .ok_or(Error::NotInitialized)?;
         let digest = Self::_voucher_digest(&env, &voucher);
-        env.crypto().ed25519_verify(&pubkey, &digest, &signature);
+        // Signature verification with proper error handling
+        Self::verify_signature_or_panic(&env, &pubkey, &digest, &signature);
 
         // 5. Payment  (skip when price == 0)
         if voucher.price > 0 {

@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import routes from './api/routes.js';
 import { startPolling } from './poller.js';
+import { rateLimiter } from './api/rate-limit-middleware.js';
 
 dotenv.config();
 
@@ -11,6 +12,9 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
+
+// Apply rate limiting to all routes
+app.use(rateLimiter);
 
 // API Routes
 app.use('/', routes);

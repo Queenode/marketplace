@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
+import { cacheMiddleware } from './cache-middleware.js';
+import { strictRateLimiter } from './rate-limit-middleware.js';
 
 const router = Router();
 
@@ -42,7 +44,8 @@ router.get('/listings/:id/history', async (req: Request, res: Response) => {
 });
 
 // GET /activity/recent — latest sales and listings across the marketplace
-router.get('/activity/recent', async (req: Request, res: Response) => {
+// Cache for 30 seconds to handle traffic spikes
+router.get('/activity/recent', cacheMiddleware(30), async (req: Request, res: Response) => {
     try {
         const results = await prisma.marketplaceEvent.findMany({
             take: 20,
@@ -56,7 +59,8 @@ router.get('/activity/recent', async (req: Request, res: Response) => {
 
 
 // GET /collections — all deployed collections
-router.get('/collections', async (req: Request, res: Response) => {
+// Cache for 60 seconds to handle traffic spikes
+router.get('/collections', cacheMiddleware(60), async (req: Request, res: Response) => {
     const { kind, creator } = req.query;
     try {
         const where: any = {};
@@ -87,8 +91,8 @@ router.get('/creators/:address/collections', async (req: Request, res: Response)
 });
 
 // GET /wallets/:address/activity — events relevant to a Stellar account
-router.get('/wallets/:address/activity', async (req: Request, res: Response) => {
-    const { address } = req.params;
+router.get('/wallets/:address/activity', strictRateLimiter, async (req: Request, res: Response) => {
+    const address = req.params.address as string;
     const take = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 200);
     try {
         const jsonKeys = ['buyer', 'artist', 'offerer', 'bidder', 'winner', 'creator'];
@@ -111,7 +115,7 @@ router.get('/wallets/:address/activity', async (req: Request, res: Response) => 
 });
 
 // GET /wallets/:address/royalty-stats — aggregates royalty-bearing sales for an artist
-router.get('/wallets/:address/royalty-stats', async (req: Request, res: Response) => {
+router.get('/wallets/:address/royalty-stats', strictRateLimiter, async (req: Request, res: Response) => {
     const { address } = req.params;
     try {
         const sold = await prisma.listing.findMany({
