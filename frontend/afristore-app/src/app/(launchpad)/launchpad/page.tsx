@@ -68,7 +68,7 @@ export default function LaunchpadPage() {
           <div className="absolute top-0 left-0 w-full h-full bg-brand-500/5 pointer-events-none" />
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-6">Ready to launch your legacy?</h2>
           <p className="text-white/60 mb-10 max-w-xl mx-auto">
-            We're currently selecting the first cohort of artists for our Genesis Launch. Join the waitlist to be notified when we go live.
+            We&apos;re currently selecting the first cohort of artists for our Genesis Launch. Join the waitlist to be notified when we go live.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button className="px-8 py-4 rounded-2xl bg-brand-500 text-white font-bold hover:bg-brand-600 transition-all shadow-xl shadow-brand-500/20 flex items-center justify-center gap-2">

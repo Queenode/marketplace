@@ -571,8 +571,16 @@ export async function getAllAuctions(): Promise<Auction[]> {
 // ── Utils ───────────────────────────────────────────────────
 
 export function stroopsToXlm(stroops: bigint): string {
-  const xlm = Number(stroops) / 10_000_000;
-  return xlm.toFixed(7).replace(/\.?0+$/, "");
+  const whole = stroops / 10_000_000n;
+  const frac = stroops % 10_000_000n;
+
+  // Convert components to absolute values for formatting
+  const absWhole = whole < 0n ? -whole : whole;
+  const absFrac = frac < 0n ? -frac : frac;
+  const sign = (whole < 0n || frac < 0n) ? "-" : "";
+
+  let fracStr = absFrac.toString().padStart(7, '0').replace(/0+$/, "");
+  return fracStr ? `${sign}${absWhole}.${fracStr}` : `${sign}${absWhole}`;
 }
 
 /**
