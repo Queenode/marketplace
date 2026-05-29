@@ -12,6 +12,44 @@ const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '5000');
 
 const server = new rpc.Server(RPC_URL);
 
+/**
+ * Rolls the database back to `safeAtLedger` by deleting all events and
+ * listings that were written past that ledger, then resets SyncState.
+ * Called when a chain re-org is detected.
+ */
+export async function revertLedgers(safeAtLedger: number): Promise<void> {
+  console.warn(`[Reorg] Rolling back to ledger ${safeAtLedger}`);
+  await prisma.$transaction(async (tx) => {
+    // Remove events that occurred after the safe checkpoint
+    await tx.marketplaceEvent.deleteMany({
+      where: { ledgerSequence: { gt: safeAtLedger } },
+    });
+
+    // Remove listings that were first created after the safe checkpoint
+    await tx.listing.deleteMany({
+      where: { createdAtLedger: { gt: safeAtLedger } },
+    });
+
+    // Revert listings whose status changed after the safe checkpoint back to Active
+    await tx.listing.updateMany({
+      where: { updatedAtLedger: { gt: safeAtLedger } },
+      data: { status: 'Active', updatedAtLedger: safeAtLedger },
+    });
+
+    // Reset collections deployed after the safe checkpoint
+    await tx.collection.deleteMany({
+      where: { deployedAtLedger: { gt: safeAtLedger } },
+    });
+
+    // Reset the sync cursor
+    await tx.syncState.update({
+      where: { id: 1 },
+      data: { lastLedger: safeAtLedger, lastLedgerHash: null },
+    });
+  });
+  console.log(`[Reorg] Rollback complete. Resuming from ledger ${safeAtLedger + 1}`);
+}
+
 export async function startPolling() {
   console.log(`Starting indexer poller for contract: ${CONTRACT_ID}`);
 
@@ -23,12 +61,9 @@ export async function startPolling() {
         syncState = await prisma.syncState.create({ data: { id: 1, lastLedger: 0 } });
       }
 
-      // 2. Fetch network state to know current ledger
-      // const networkDetails = await server.getNetwork();
-      
-      // 3. Get events from lastLedger + 1
+      // 2. Fetch events from lastLedger + 1
       const startLedger = syncState.lastLedger + 1;
-      
+
       const response = await server.getEvents({
         startLedger: startLedger,
         filters: [
@@ -39,21 +74,31 @@ export async function startPolling() {
         ],
       });
 
+      // 3. Re-org detection: if the node's latest ledger has fallen behind what
+      //    we already indexed, the node reset or we connected to a different one.
+      if (syncState.lastLedger > 0 && response.latestLedger < syncState.lastLedger) {
+        console.warn(
+          `[Reorg] Network latestLedger ${response.latestLedger} < indexed ${syncState.lastLedger}`
+        );
+        await revertLedgers(response.latestLedger);
+        continue;
+      }
+
       if (response.events && response.events.length > 0) {
         console.log(`Found ${response.events.length} new events since ledger ${syncState.lastLedger}`);
-        
+
         let maxLedger = syncState.lastLedger;
 
         for (const event of response.events) {
           // Topics in v14 are ScVal, need to convert to strings (symbol or other)
           const topicStrings = event.topic.map(t => {
-            if (typeof t === 'string') return t; // Already a string/base64
-            return t.toXDR('base64'); // If it's an ScVal object
+            if (typeof t === 'string') return t;
+            return t.toXDR('base64');
           });
-          
+
           const decoded = parseMarketplaceEvent(
-            topicStrings, 
-            typeof event.value === 'string' ? event.value : event.value.toXDR('base64'), 
+            topicStrings,
+            typeof event.value === 'string' ? event.value : event.value.toXDR('base64'),
             event.ledger
           );
           if (decoded) {
@@ -62,10 +107,13 @@ export async function startPolling() {
           if (event.ledger > maxLedger) maxLedger = event.ledger;
         }
 
-        // Update sync state
+        // 4. Persist the new cursor with the network's latest ledger hash
         await prisma.syncState.update({
           where: { id: 1 },
-          data: { lastLedger: maxLedger },
+          data: {
+            lastLedger: maxLedger,
+            lastLedgerHash: String(response.latestLedger),
+          },
         });
       }
 
