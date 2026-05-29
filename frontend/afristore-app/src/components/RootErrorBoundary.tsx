@@ -2,10 +2,12 @@
 
 import React from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import * as Sentry from "@sentry/nextjs";
 
 interface RootErrorBoundaryState {
   hasError: boolean;
   message: string;
+  eventId: string | null;
 }
 
 export class RootErrorBoundary extends React.Component<
@@ -15,23 +17,40 @@ export class RootErrorBoundary extends React.Component<
   public state: RootErrorBoundaryState = {
     hasError: false,
     message: "",
+    eventId: null,
   };
 
-  public static getDerivedStateFromError(error: Error): RootErrorBoundaryState {
+  public static getDerivedStateFromError(
+    error: Error,
+  ): Partial<RootErrorBoundaryState> {
     return {
       hasError: true,
       message: error.message || "An unexpected error occurred.",
     };
   }
 
-  public componentDidCatch(error: Error) {
-    // Keep a breadcrumb for debugging while preventing a white screen for users.
-    // eslint-disable-next-line no-console
-    console.error("RootErrorBoundary caught an error:", error);
+  public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log to console for debugging
+    console.error("RootErrorBoundary caught an error:", error, errorInfo);
+
+    // Send to Sentry with additional context
+    Sentry.withScope((scope) => {
+      scope.setContext("errorBoundary", {
+        componentStack: errorInfo.componentStack,
+      });
+      const eventId = Sentry.captureException(error);
+      this.setState({ eventId });
+    });
   }
 
   private reloadPage = () => {
     window.location.reload();
+  };
+
+  private reportFeedback = () => {
+    if (this.state.eventId) {
+      Sentry.showReportDialog({ eventId: this.state.eventId });
+    }
   };
 
   public render() {
@@ -48,14 +67,25 @@ export class RootErrorBoundary extends React.Component<
         <p className="mt-2 max-w-md text-sm text-gray-600">
           {this.state.message || "The app hit an unexpected error."}
         </p>
-        <button
-          type="button"
-          onClick={this.reloadPage}
-          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
-        >
-          <RefreshCw size={14} />
-          Reload app
-        </button>
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={this.reloadPage}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
+          >
+            <RefreshCw size={14} />
+            Reload app
+          </button>
+          {this.state.eventId && (
+            <button
+              type="button"
+              onClick={this.reportFeedback}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              Report issue
+            </button>
+          )}
+        </div>
       </div>
     );
   }

@@ -14,13 +14,19 @@ import {
   cancelListing,
   updateListing,
   Listing,
+  stroopsToXlm,
 } from "@/lib/contract";
 import { fetchListings } from "@/lib/indexer";
 import { config } from "@/lib/config";
-import { uploadImageToIPFS, uploadMetadataToIPFS, ArtworkMetadata } from "@/lib/ipfs";
+import {
+  uploadImageToIPFS,
+  uploadMetadataToIPFS,
+  ArtworkMetadata,
+} from "@/lib/ipfs";
 import { getReadableErrorMessage } from "@/lib/errors";
 import { useTransientErrorToast } from "./useTransientErrorToast";
 import { assertSupportedTokenAddress } from "@/lib/token-support";
+import { trackEvent } from "@/providers/PostHogProvider";
 
 // ── Listing with resolved metadata ───────────────────────────
 
@@ -46,13 +52,17 @@ export function useMarketplace(opts?: { page?: number; limit?: number }) {
           const limit = opts.limit || 50;
           const offset = opts.page ? (opts.page - 1) * limit : 0;
           const res = await fetchListings({ status: "Active", limit, offset });
-          const rows = Array.isArray(res.listings) ? res.listings as any[] : [];
+          const rows = Array.isArray(res.listings)
+            ? (res.listings as any[])
+            : [];
           const sorted = [...rows].sort((a, b) => b.created_at - a.created_at);
           setListings(sorted as Listing[]);
         } else {
           const res = await fetchListings({ status: "Active", limit: 1000 });
           if (Array.isArray(res.listings) && res.listings.length > 0) {
-            const sorted = [...res.listings].sort((a: any, b: any) => b.created_at - a.created_at);
+            const sorted = [...res.listings].sort(
+              (a: any, b: any) => b.created_at - a.created_at,
+            );
             setListings(sorted as Listing[]);
           } else {
             // Fallback to on-chain scan
@@ -156,11 +166,17 @@ export function useCreateListing(artistPublicKey: string | null) {
 
       try {
         setProgress("Validating payment token…");
-        const token = await assertSupportedTokenAddress(input.tokenAddress, "listing");
+        const token = await assertSupportedTokenAddress(
+          input.tokenAddress,
+          "listing",
+        );
 
         // Step 1: Upload image to IPFS.
         setProgress("Uploading image to IPFS…");
-        const imageResult = await uploadImageToIPFS(input.imageFile, input.title);
+        const imageResult = await uploadImageToIPFS(
+          input.imageFile,
+          input.title,
+        );
 
         // Step 2: Build metadata JSON.
         const metadata: ArtworkMetadata = {
@@ -174,7 +190,10 @@ export function useCreateListing(artistPublicKey: string | null) {
 
         // Step 3: Upload metadata to IPFS.
         setProgress("Uploading metadata to IPFS…");
-        const metadataResult = await uploadMetadataToIPFS(metadata, input.title);
+        const metadataResult = await uploadMetadataToIPFS(
+          metadata,
+          input.title,
+        );
 
         // Step 4: Call the Soroban contract.
         setProgress("Creating on-chain listing…");
@@ -183,7 +202,14 @@ export function useCreateListing(artistPublicKey: string | null) {
           metadataResult.cid,
           input.price,
           token.address,
-          input.royaltyBps
+          input.royaltyBps,
+        );
+
+        // Track successful listing creation
+        trackEvent.listingCreated(
+          listingId,
+          input.price.toString(),
+          token.code || "XLM",
         );
 
         setProgress("Listing created successfully!");
@@ -195,7 +221,7 @@ export function useCreateListing(artistPublicKey: string | null) {
         setIsCreating(false);
       }
     },
-    [artistPublicKey]
+    [artistPublicKey],
   );
 
   return { create, isCreating, progress, error };
@@ -217,7 +243,17 @@ export function useBuyArtwork(buyerPublicKey: string | null) {
       setIsBuying(true);
       setError(null);
       try {
+        // Get listing details for tracking
+        const listing = await getListing(listingId);
         await buyArtwork(buyerPublicKey, listingId);
+
+        // Track successful purchase
+        trackEvent.purchaseSuccessful(
+          listingId,
+          stroopsToXlm(listing.price),
+          listing.currency || "XLM",
+        );
+
         return true;
       } catch (err: unknown) {
         setError(getReadableErrorMessage(err, "Purchase failed"));
@@ -226,7 +262,7 @@ export function useBuyArtwork(buyerPublicKey: string | null) {
         setIsBuying(false);
       }
     },
-    [buyerPublicKey]
+    [buyerPublicKey],
   );
 
   return { buy, isBuying, error };
@@ -257,7 +293,7 @@ export function useCancelListing(artistPublicKey: string | null) {
         setIsCancelling(false);
       }
     },
-    [artistPublicKey]
+    [artistPublicKey],
   );
 
   return { cancel, isCancelling, error };
@@ -297,18 +333,26 @@ export function useUpdateListing(artistPublicKey: string | null) {
 
       try {
         if (input.tokenAddress !== input.originalTokenAddress) {
-          throw new Error("Updating the payment token for an existing listing is not supported.");
+          throw new Error(
+            "Updating the payment token for an existing listing is not supported.",
+          );
         }
 
         setProgress("Validating payment token…");
-        const token = await assertSupportedTokenAddress(input.tokenAddress, "listing");
+        const token = await assertSupportedTokenAddress(
+          input.tokenAddress,
+          "listing",
+        );
 
         let imageCid = input.currentMetadata.image;
 
         // Step 1: Upload new image to IPFS if provided.
         if (input.imageFile) {
           setProgress("Uploading new image to IPFS…");
-          const imageResult = await uploadImageToIPFS(input.imageFile, input.title);
+          const imageResult = await uploadImageToIPFS(
+            input.imageFile,
+            input.title,
+          );
           imageCid = `ipfs://${imageResult.cid}`;
         }
 
@@ -324,7 +368,10 @@ export function useUpdateListing(artistPublicKey: string | null) {
 
         // Step 3: Upload metadata to IPFS.
         setProgress("Uploading new metadata to IPFS…");
-        const metadataResult = await uploadMetadataToIPFS(metadata, input.title);
+        const metadataResult = await uploadMetadataToIPFS(
+          metadata,
+          input.title,
+        );
 
         // Step 4: Call the Soroban contract.
         setProgress("Updating on-chain listing…");
@@ -333,7 +380,7 @@ export function useUpdateListing(artistPublicKey: string | null) {
           input.listingId,
           metadataResult.cid,
           input.price,
-          token.address
+          token.address,
         );
 
         setProgress("Listing updated successfully!");
@@ -345,7 +392,7 @@ export function useUpdateListing(artistPublicKey: string | null) {
         setIsUpdating(false);
       }
     },
-    [artistPublicKey]
+    [artistPublicKey],
   );
 
   return { update, isUpdating, progress, error };
@@ -407,7 +454,7 @@ export function usePlaceBid(bidderPublicKey: string | null) {
         setIsBidding(false);
       }
     },
-    [bidderPublicKey]
+    [bidderPublicKey],
   );
 
   return { bid, isBidding, error };
