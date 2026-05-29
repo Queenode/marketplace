@@ -7,16 +7,20 @@ import {
   isFreighterInstalled,
 } from "@/lib/freighter";
 import { config } from "@/lib/config";
+import { trackEvent } from "@/providers/PostHogProvider";
 import type { WalletState, WalletStatus } from "./useWallet";
 
 export function useFreighterWallet(): WalletState {
   const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(null);
+  const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(
+    null,
+  );
   const [isInstalled, setIsInstalled] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isWrongNetwork = !!publicKey &&
+  const isWrongNetwork =
+    !!publicKey &&
     !!networkPassphrase &&
     networkPassphrase !== config.networkPassphrase;
 
@@ -71,13 +75,23 @@ export function useFreighterWallet(): WalletState {
       setNetworkPassphrase(account.networkPassphrase);
 
       if (account.networkPassphrase !== config.networkPassphrase) {
-        setError(`Wrong network! Please switch Freighter to ${config.network}.`);
+        setError(
+          `Wrong network! Please switch Freighter to ${config.network}.`,
+        );
+        trackEvent.walletConnectionDropOff("connection_failed", "freighter");
+      } else {
+        // Track successful wallet connection
+        trackEvent.walletConnected("freighter", account.publicKey);
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes("denied")) {
         setError("Connection request was rejected.");
+        trackEvent.walletConnectionDropOff("connection_failed", "freighter");
       } else {
-        setError(err instanceof Error ? err.message : "Failed to connect wallet");
+        setError(
+          err instanceof Error ? err.message : "Failed to connect wallet",
+        );
+        trackEvent.walletConnectionDropOff("connection_failed", "freighter");
       }
     } finally {
       setIsConnecting(false);
