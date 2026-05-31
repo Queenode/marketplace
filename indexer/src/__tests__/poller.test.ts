@@ -35,6 +35,7 @@ const mockPrisma = vi.hoisted(() => ({
     findUnique: vi.fn(),
     create: vi.fn().mockResolvedValue({ id: 1, lastLedger: 0 }),
     update: vi.fn().mockResolvedValue({}),
+    upsert: vi.fn().mockResolvedValue({ id: 1, lastLedger: 0, lastLedgerHash: null }),
   },
   $transaction: vi.fn((fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx)),
 }));
@@ -440,10 +441,50 @@ describe('validateHashContinuity', () => {
     expect(result).toBe(false);
     // revertLedgers wraps everything in a prisma transaction
     expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+  });
+});
+
 // ── startPolling validation ───────────────────────────────────────────────────
 
 describe('startPolling', () => {
   it('throws an error if both CONTRACT_ID and LAUNCHPAD_CONTRACT_ID are empty', async () => {
     await expect(startPolling()).rejects.toThrow('At least one of MARKETPLACE_CONTRACT_ID or LAUNCHPAD_CONTRACT_ID must be set');
+  });
+});
+
+// ── SyncState upsert (issue #243) ─────────────────────────────────────────────
+
+describe('startPolling — SyncState initialisation uses upsert', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.MARKETPLACE_CONTRACT_ID = 'CTEST';
+  });
+
+  afterEach(() => {
+    delete process.env.MARKETPLACE_CONTRACT_ID;
+  });
+
+  it('calls syncState.upsert instead of findUnique+create on startup', async () => {
+    // upsert returns an existing-or-new row; throw after first iteration to exit loop
+    mockPrisma.syncState.upsert.mockResolvedValueOnce({
+      id: 1,
+      lastLedger: 500,
+      lastLedgerHash: null,
+    });
+
+    await startPolling().catch((err) => {
+      if (err.message !== 'stop-loop') throw err;
+    });
+
+    expect(mockPrisma.syncState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 1 },
+        create: expect.objectContaining({ id: 1, lastLedger: 0 }),
+        update: {},
+      })
+    );
+    // The old findUnique + create pattern must NOT be used
+    expect(mockPrisma.syncState.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.syncState.create).not.toHaveBeenCalled();
   });
 });
