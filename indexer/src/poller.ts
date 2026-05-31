@@ -100,13 +100,13 @@ export async function startPolling() {
 
   while (true) {
     try {
-      // 1. Get last indexed ledger
-      let syncState = await prisma.syncState.findUnique({ where: { id: 1 } });
-      if (!syncState) {
-        syncState = await prisma.syncState.create({
-          data: { id: 1, lastLedger: 0, lastLedgerHash: null }
-        });
-      }
+      // 1. Get last indexed ledger — upsert avoids a unique-constraint violation
+      //    when two instances start simultaneously (race between findUnique + create).
+      let syncState = await prisma.syncState.upsert({
+        where: { id: 1 },
+        create: { id: 1, lastLedger: 0, lastLedgerHash: null },
+        update: {},
+      });
 
       // 2. Validate hash continuity on every poll
       const isContinuous = await validateHashContinuity(syncState, server);
@@ -135,10 +135,12 @@ export async function startPolling() {
         });
         startLedger = windowFloor;
         // Persist the reset so future polls don't re-request the stale range.
-        await prisma.syncState.update({
+        const resetState = await prisma.syncState.update({
           where: { id: 1 },
           data: { lastLedger: windowFloor - 1, lastLedgerHash: null },
         });
+
+        syncState = resetState;
       }
 
       const response = await server.getEvents({
