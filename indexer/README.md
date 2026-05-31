@@ -8,6 +8,7 @@ A lightweight off-chain indexer for the Afristore Marketplace Soroban contract. 
 - **Structured Data**: Reconstructs marketplace state (listings, owners, prices).
 - **REST API**: Specialized endpoints for artist listings, ownership, and history.
 - **Redis Caching**: TTL-based caching for high-traffic endpoints to handle traffic spikes.
+- **Backfill CLI**: Replays missed ledgers from an archival RPC when the live RPC window is too old.
 - **Docker Ready**: Easy setup with PostgreSQL and Docker Compose.
 
 ## REST API Endpoints
@@ -56,6 +57,10 @@ A lightweight off-chain indexer for the Afristore Marketplace Soroban contract. 
    ```bash
    npm run dev
    ```
+6. Backfill a missed range from an archival RPC:
+   ```bash
+   npm run backfill -- --start=123456 --end=123999 --rpc=https://your-archival-rpc
+   ```
 
 ## Environment Variables
 
@@ -65,6 +70,7 @@ A lightweight off-chain indexer for the Afristore Marketplace Soroban contract. 
 | `DATABASE_URL`            | PostgreSQL connection string  | -                                     |
 | `REDIS_URL`               | Redis connection string       | `redis://localhost:6379`              |
 | `STELLAR_RPC_URL`         | Stellar RPC endpoint          | `https://soroban-testnet.stellar.org` |
+| `ARCHIVAL_STELLAR_RPC_URL` | Optional archival RPC endpoint | -                                     |
 | `MARKETPLACE_CONTRACT_ID` | The Soroban contract to index | -                                     |
 | `POLL_INTERVAL_MS`        | Polling frequency in ms       | `5000`                                |
 

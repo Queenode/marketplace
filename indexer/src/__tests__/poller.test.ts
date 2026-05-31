@@ -557,7 +557,9 @@ describe('startPolling — window floor reset', () => {
       .mockResolvedValue({ sequence: networkLatest } as any);
     vi.spyOn(sdkMod.rpc.Server.prototype, 'getEvents')
       .mockImplementation(({ startLedger }: any) => {
-        capturedStartLedger = startLedger;
+        if (capturedStartLedger === undefined) {
+          capturedStartLedger = startLedger;
+        }
         return Promise.resolve({ events: [], latestLedger: networkLatest });
       });
 

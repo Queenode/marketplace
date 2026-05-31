@@ -1,6 +1,5 @@
 import { rpc, Contract, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative } from '@stellar/stellar-sdk';
 import prisma from './db.js';
-import { parseMarketplaceEvent } from './parser.js';
 import { emitSSEEvent } from './api/routes.js';
 import dotenv from 'dotenv';
 import {
@@ -8,6 +7,7 @@ import {
   networkLatestLedgerGauge,
   syncLatencyGauge
 } from './metrics.js';
+import { collectMarketplaceEvents, MAX_LEDGER_WINDOW } from './event-sync.js';
 import redis from './redis.js';
 
 dotenv.config();
@@ -17,9 +17,6 @@ const CONTRACT_ID = process.env.MARKETPLACE_CONTRACT_ID || '';
 const LAUNCHPAD_CONTRACT_ID = process.env.LAUNCHPAD_CONTRACT_ID || '';
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '5000');
 
-// Stellar RPC enforces a maximum getEvents window of 17,280 ledgers (~24 h).
-const MAX_LEDGER_WINDOW = 17_000;
-
 // Retry back-off base in ms; doubles on each consecutive failure up to MAX_BACKOFF_MS.
 const BASE_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -28,6 +25,16 @@ let consecutiveErrors = 0;
 
 // Graceful shutdown coordination
 let shuttingDown = false;
+
+function getContractIds(): string[] {
+  return [CONTRACT_ID, LAUNCHPAD_CONTRACT_ID].filter(Boolean);
+}
+
+function updateSyncMetrics(processedLedger: number, networkLatestLedger: number) {
+  latestLedgerProcessedGauge.set(processedLedger);
+  networkLatestLedgerGauge.set(networkLatestLedger);
+  syncLatencyGauge.set(Math.max(0, networkLatestLedger - processedLedger));
+}
 
 function setupSignalHandlers() {
   const onSignal = (sig: string) => {
@@ -136,11 +143,12 @@ export async function validateHashContinuity(
 }
 
 export async function startPolling() {
-  if (!CONTRACT_ID && !LAUNCHPAD_CONTRACT_ID) {
+  const contractIds = getContractIds();
+  if (contractIds.length === 0) {
     throw new Error('At least one of MARKETPLACE_CONTRACT_ID or LAUNCHPAD_CONTRACT_ID must be set');
   }
 
-  console.log(`Starting indexer poller for contract: ${CONTRACT_ID}`);
+  console.log(`Starting indexer poller for contract(s): ${contractIds.join(', ')}`);
 
   while (!shuttingDown) {
     try {
@@ -168,12 +176,26 @@ export async function startPolling() {
         throw err;
       }
 
+      networkLatestLedgerGauge.set(networkLatestLedger);
+
+      if (syncState.lastLedger > 0 && networkLatestLedger < syncState.lastLedger) {
+        console.warn({
+          msg: 'Network latest ledger moved behind indexed state',
+          indexedLedger: syncState.lastLedger,
+          networkLatestLedger,
+        });
+        await revertLedgers(networkLatestLedger);
+        continue;
+      }
+
       const windowFloor = networkLatestLedger - MAX_LEDGER_WINDOW;
       let startLedger = syncState.lastLedger + 1;
+      let skippedRange: { from: number; to: number } | null = null;
       if (startLedger < windowFloor) {
+        skippedRange = { from: startLedger, to: windowFloor - 1 };
         console.warn({
-          msg: 'startLedger too old — resetting to safe window floor',
-          requested: startLedger,
+          msg: 'Skipping ledger gap outside the live RPC window',
+          skippedRange,
           windowFloor,
           networkLatest: networkLatestLedger,
         });
@@ -186,55 +208,15 @@ export async function startPolling() {
 
         syncState = resetState;
       }
+      const decodedEvents = await collectMarketplaceEvents(server, contractIds, startLedger, networkLatestLedger);
 
-      const response = await server.getEvents({
-        startLedger,
-        filters: [
-          {
-            type: 'contract',
-            contractIds: [CONTRACT_ID, LAUNCHPAD_CONTRACT_ID].filter(Boolean),
-          },
-        ],
-      });
-
-      // Re-org detection: if the node's latest ledger has fallen behind what
-      // we already indexed, the node reset or we connected to a different one.
-      if (syncState.lastLedger > 0 && response.latestLedger < syncState.lastLedger) {
-        console.warn(
-          `[Reorg] Network latestLedger ${response.latestLedger} < indexed ${syncState.lastLedger}`
-        );
-        await revertLedgers(response.latestLedger);
-        continue;
-      }
-
-      if (response.events && response.events.length > 0) {
-        console.log(`Found ${response.events.length} new events since ledger ${syncState.lastLedger}`);
-
-        let maxLedger = syncState.lastLedger;
-        const decodedEvents: any[] = [];
-
-        for (const event of response.events) {
-          // Topics in v14 are ScVal, need to convert to strings (symbol or other)
-          const topicStrings = event.topic.map(t => {
-            if (typeof t === 'string') return t;
-            return t.toXDR('base64');
-          });
-
-          const decoded = parseMarketplaceEvent(
-            topicStrings,
-            typeof event.value === 'string' ? event.value : event.value.toXDR('base64'),
-            event.ledger
-          );
-          if (decoded) decodedEvents.push(decoded);
-          if (event.ledger > maxLedger) maxLedger = event.ledger;
-        }
-
-        // Fetch the actual hash for the latest processed ledger
-        let latestHash: string | null = null;
+      let latestHash: string | null = null;
+      if (decodedEvents.length > 0) {
+        const maxLedger = Math.max(...decodedEvents.map((event) => event.ledgerSequence));
         try {
           const ledgersRes = await server.getLedgers({
             startLedger: maxLedger,
-            pagination: { limit: 1 }
+            pagination: { limit: 1 },
           });
           if (ledgersRes.ledgers && ledgersRes.ledgers.length > 0) {
             latestHash = ledgersRes.ledgers[0].hash;
@@ -243,40 +225,8 @@ export async function startPolling() {
           console.error(`Failed to fetch hash for ledger ${maxLedger}:`, err);
         }
 
-    
         const { updatedState, newEvents } = await prisma.$transaction(async (tx) => {
-          const conditions = decodedEvents.map((e) => ({
-            listingId: e.listingId ?? null,
-            eventType: e.eventType,
-            ledgerSequence: e.ledgerSequence,
-          }));
-
-          const existing = conditions.length
-            ? await tx.marketplaceEvent.findMany({ where: { OR: conditions }, select: { listingId: true, eventType: true, ledgerSequence: true } })
-            : [];
-
-          const existingSet = new Set(existing.map((e) => `${e.listingId ?? 'null'}|${e.eventType}|${e.ledgerSequence}`));
-
-          const toInsert = decodedEvents.filter((e) => !existingSet.has(`${e.listingId ?? 'null'}|${e.eventType}|${e.ledgerSequence}`));
-
-          if (toInsert.length > 0) {
-            await tx.marketplaceEvent.createMany({
-              data: toInsert.map((ev) => ({
-                listingId: ev.listingId,
-                eventType: ev.eventType,
-                actor: ev.actor,
-                data: ev.data,
-                ledgerSequence: ev.ledgerSequence,
-              })),
-              skipDuplicates: true,
-            });
-
-            // Apply state updates for newly-inserted events inside the same transaction
-            for (const ev of toInsert) {
-              await processEvent(ev, tx, true);
-            }
-          }
-
+          const toInsert = await applyDecodedEvents(decodedEvents, tx);
           const updated = await tx.syncState.update({
             where: { id: 1 },
             data: {
@@ -288,39 +238,33 @@ export async function startPolling() {
           return { updatedState: updated, newEvents: toInsert };
         });
 
-        latestLedgerProcessedGauge.set(updatedState.lastLedger);
-        networkLatestLedgerGauge.set(networkLatestLedger);
-        syncLatencyGauge.set(Math.max(0, networkLatestLedger - updatedState.lastLedger));
+        updateSyncMetrics(updatedState.lastLedger, networkLatestLedger);
 
-        // Emit SSEs for events that were actually newly applied
         for (const ev of newEvents) emitSSEEvent(ev);
-      } else if (response.latestLedger && response.latestLedger > syncState.lastLedger) {
-        // If there are no events but the network has advanced, we can catch up the syncState
-        // so we don't scan empty ranges repeatedly. Fetch the hash for the latest ledger.
-        let newHash: string | null = null;
+      } else if (networkLatestLedger > syncState.lastLedger) {
         try {
           const ledgersRes = await server.getLedgers({
-            startLedger: response.latestLedger,
-            pagination: { limit: 1 }
+            startLedger: networkLatestLedger,
+            pagination: { limit: 1 },
           });
           if (ledgersRes.ledgers && ledgersRes.ledgers.length > 0) {
-            newHash = ledgersRes.ledgers[0].hash;
+            latestHash = ledgersRes.ledgers[0].hash;
           }
         } catch (err) {
-          console.error(`Failed to fetch hash for latest network ledger ${response.latestLedger}:`, err);
+          console.error(`Failed to fetch hash for latest network ledger ${networkLatestLedger}:`, err);
         }
 
         const updatedState = await prisma.syncState.update({
           where: { id: 1 },
           data: {
-            lastLedger: response.latestLedger,
-            lastLedgerHash: newHash,
+            lastLedger: networkLatestLedger,
+            lastLedgerHash: latestHash,
           },
         });
 
-        latestLedgerProcessedGauge.set(updatedState.lastLedger);
-        networkLatestLedgerGauge.set(networkLatestLedger);
-        syncLatencyGauge.set(Math.max(0, networkLatestLedger - updatedState.lastLedger));
+        updateSyncMetrics(updatedState.lastLedger, networkLatestLedger);
+      } else {
+        updateSyncMetrics(syncState.lastLedger, networkLatestLedger);
       }
 
       consecutiveErrors = 0;
@@ -357,6 +301,48 @@ async function fetchListingFromChain(_listingId: bigint): Promise<any | null> {
 
 async function fetchAuctionFromChain(_auctionId: bigint): Promise<any | null> {
   return null;
+}
+
+export async function applyDecodedEvents(decodedEvents: any[], tx: any) {
+  const conditions = decodedEvents.map((event) => ({
+    listingId: event.listingId ?? null,
+    eventType: event.eventType,
+    ledgerSequence: event.ledgerSequence,
+  }));
+
+  const existing = conditions.length
+    ? await tx.marketplaceEvent.findMany({
+        where: { OR: conditions },
+        select: { listingId: true, eventType: true, ledgerSequence: true },
+      })
+    : [];
+
+  const existingSet = new Set(
+    existing.map((event) => `${event.listingId ?? 'null'}|${event.eventType}|${event.ledgerSequence}`)
+  );
+
+  const toInsert = decodedEvents.filter(
+    (event) => !existingSet.has(`${event.listingId ?? 'null'}|${event.eventType}|${event.ledgerSequence}`)
+  );
+
+  if (toInsert.length > 0) {
+    await tx.marketplaceEvent.createMany({
+      data: toInsert.map((event) => ({
+        listingId: event.listingId,
+        eventType: event.eventType,
+        actor: event.actor,
+        data: event.data,
+        ledgerSequence: event.ledgerSequence,
+      })),
+      skipDuplicates: true,
+    });
+
+    for (const event of toInsert) {
+      await processEvent(event, tx, true);
+    }
+  }
+
+  return toInsert;
 }
 
 export async function processEvent(event: any, tx?: any, skipInsert = false) {
