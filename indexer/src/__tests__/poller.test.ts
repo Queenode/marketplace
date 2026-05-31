@@ -35,6 +35,7 @@ const mockPrisma = vi.hoisted(() => ({
     findUnique: vi.fn(),
     create: vi.fn().mockResolvedValue({ id: 1, lastLedger: 0 }),
     update: vi.fn().mockResolvedValue({}),
+    upsert: vi.fn().mockResolvedValue({ id: 1, lastLedger: 0, lastLedgerHash: null }),
   },
   $transaction: vi.fn((fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx)),
 }));
@@ -463,6 +464,14 @@ describe('startPolling — window floor reset', () => {
     delete process.env.MARKETPLACE_CONTRACT_ID;
   });
 
+  it('calls syncState.upsert instead of findUnique+create on startup', async () => {
+    // upsert returns an existing-or-new row; throw after first iteration to exit loop
+    mockPrisma.syncState.upsert.mockResolvedValueOnce({
+      id: 1,
+      lastLedger: 500,
+      lastLedgerHash: null,
+    });
+
   it('fetches events from windowFloor when syncState.lastLedger is too old', async () => {
     // Network is at ledger 20000; MAX_LEDGER_WINDOW is 17000 → windowFloor = 3000
     // syncState.lastLedger = 100 → startLedger would be 101, which is < 3000
@@ -499,6 +508,16 @@ describe('startPolling — window floor reset', () => {
       if (err.message !== 'stop-loop') throw err;
     });
 
+    expect(mockPrisma.syncState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 1 },
+        create: expect.objectContaining({ id: 1, lastLedger: 0 }),
+        update: {},
+      })
+    );
+    // The old findUnique + create pattern must NOT be used
+    expect(mockPrisma.syncState.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.syncState.create).not.toHaveBeenCalled();
     // The DB persist for the window-floor reset must have been called
     expect(mockPrisma.syncState.update).toHaveBeenCalledWith(
       expect.objectContaining({
