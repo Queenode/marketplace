@@ -75,6 +75,7 @@ model MarketplaceEvent {
   ledgerTimestamp DateTime @default(now())
   @@index([actor])
   @@index([eventType])
+  @@unique([listingId, eventType, ledgerSequence])
 }
 
 model Collection {

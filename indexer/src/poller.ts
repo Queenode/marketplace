@@ -92,6 +92,10 @@ export async function validateHashContinuity(
 }
 
 export async function startPolling() {
+  if (!CONTRACT_ID && !LAUNCHPAD_CONTRACT_ID) {
+    throw new Error('At least one of MARKETPLACE_CONTRACT_ID or LAUNCHPAD_CONTRACT_ID must be set');
+  }
+
   console.log(`Starting indexer poller for contract: ${CONTRACT_ID}`);
 
   while (true) {
@@ -161,6 +165,7 @@ export async function startPolling() {
         console.log(`Found ${response.events.length} new events since ledger ${syncState.lastLedger}`);
 
         let maxLedger = syncState.lastLedger;
+        const decodedEvents: any[] = [];
 
         for (const event of response.events) {
           // Topics in v14 are ScVal, need to convert to strings (symbol or other)
@@ -174,9 +179,7 @@ export async function startPolling() {
             typeof event.value === 'string' ? event.value : event.value.toXDR('base64'),
             event.ledger
           );
-          if (decoded) {
-            await processEvent(decoded);
-          }
+          if (decoded) decodedEvents.push(decoded);
           if (event.ledger > maxLedger) maxLedger = event.ledger;
         }
 
@@ -194,18 +197,57 @@ export async function startPolling() {
           console.error(`Failed to fetch hash for ledger ${maxLedger}:`, err);
         }
 
-        // Persist the new cursor with the ledger hash for continuity validation
-        const updatedState = await prisma.syncState.update({
-          where: { id: 1 },
-          data: {
-            lastLedger: maxLedger,
-            lastLedgerHash: latestHash,
-          },
+    
+        const { updatedState, newEvents } = await prisma.$transaction(async (tx) => {
+          const conditions = decodedEvents.map((e) => ({
+            listingId: e.listingId ?? null,
+            eventType: e.eventType,
+            ledgerSequence: e.ledgerSequence,
+          }));
+
+          const existing = conditions.length
+            ? await tx.marketplaceEvent.findMany({ where: { OR: conditions }, select: { listingId: true, eventType: true, ledgerSequence: true } })
+            : [];
+
+          const existingSet = new Set(existing.map((e) => `${e.listingId ?? 'null'}|${e.eventType}|${e.ledgerSequence}`));
+
+          const toInsert = decodedEvents.filter((e) => !existingSet.has(`${e.listingId ?? 'null'}|${e.eventType}|${e.ledgerSequence}`));
+
+          if (toInsert.length > 0) {
+            await tx.marketplaceEvent.createMany({
+              data: toInsert.map((ev) => ({
+                listingId: ev.listingId,
+                eventType: ev.eventType,
+                actor: ev.actor,
+                data: ev.data,
+                ledgerSequence: ev.ledgerSequence,
+              })),
+              skipDuplicates: true,
+            });
+
+            // Apply state updates for newly-inserted events inside the same transaction
+            for (const ev of toInsert) {
+              await processEvent(ev, tx, true);
+            }
+          }
+
+          const updated = await tx.syncState.update({
+            where: { id: 1 },
+            data: {
+              lastLedger: maxLedger,
+              lastLedgerHash: latestHash,
+            },
+          });
+
+          return { updatedState: updated, newEvents: toInsert };
         });
 
         latestLedgerProcessedGauge.set(updatedState.lastLedger);
         networkLatestLedgerGauge.set(networkLatestLedger);
         syncLatencyGauge.set(Math.max(0, networkLatestLedger - updatedState.lastLedger));
+
+        // Emit SSEs for events that were actually newly applied
+        for (const ev of newEvents) emitSSEEvent(ev);
       } else if (response.latestLedger && response.latestLedger > syncState.lastLedger) {
         // If there are no events but the network has advanced, we can catch up the syncState
         // so we don't scan empty ranges repeatedly. Fetch the hash for the latest ledger.
@@ -266,19 +308,22 @@ async function fetchAuctionFromChain(_auctionId: bigint): Promise<any | null> {
   return null;
 }
 
-export async function processEvent(event: any) {
+export async function processEvent(event: any, tx?: any, skipInsert = false) {
   const { eventType, listingId, actor, ledgerSequence, data } = event;
 
-  // 1. Log to MarketplaceEvent history
-  await prisma.marketplaceEvent.create({
-    data: {
-      listingId,
-      eventType,
-      actor,
-      ledgerSequence,
-      data,
-    },
-  });
+  const db = tx ?? prisma;
+
+  if (!skipInsert) {
+    await db.marketplaceEvent.create({
+      data: {
+        listingId,
+        eventType,
+        actor,
+        ledgerSequence,
+        data,
+      },
+    });
+  }
 
   // 2. Handle deploy events (no listingId — collection deployments)
   if (eventType === 'DEPLOY_NORMAL_721' || eventType === 'DEPLOY_NORMAL_1155' ||
@@ -293,7 +338,7 @@ export async function processEvent(event: any) {
     const creatorAddr  = rawData[0]?.toString() || actor;
     const contractAddr = rawData[1]?.toString() || '';
     if (contractAddr) {
-      await prisma.collection.upsert({
+      await db.collection.upsert({
         where: { contractAddress: contractAddr },
         create: {
           contractAddress: contractAddr,
@@ -339,7 +384,7 @@ export async function processEvent(event: any) {
           }))
         : [];
 
-      await prisma.listing.upsert({
+      await db.listing.upsert({
         where: { listingId },
         create: {
           listingId,
@@ -370,7 +415,7 @@ export async function processEvent(event: any) {
     }
 
     case 'LISTING_UPDATED':
-      await prisma.listing.update({
+      await db.listing.update({
         where: { listingId },
         data: {
           price: data.new_price,
@@ -381,7 +426,7 @@ export async function processEvent(event: any) {
       break;
 
     case 'ARTWORK_SOLD':
-      await prisma.listing.update({
+      await db.listing.update({
         where: { listingId },
         data: {
           status: 'Sold',
@@ -392,7 +437,7 @@ export async function processEvent(event: any) {
       break;
 
     case 'LISTING_CANCELLED':
-      await prisma.listing.update({
+      await db.listing.update({
         where: { listingId },
         data: {
           status: 'Cancelled',
@@ -425,7 +470,7 @@ export async function processEvent(event: any) {
           }))
         : [];
 
-      await prisma.auction.upsert({
+      await db.auction.upsert({
         where: { auctionId: listingId },
         create: {
           auctionId: listingId,
@@ -460,7 +505,7 @@ export async function processEvent(event: any) {
     }
 
     case 'BID_PLACED': {
-      await prisma.auction.update({
+      await db.auction.update({
         where: { auctionId: listingId },
         data: {
           highestBid: data.bid_amount,
@@ -472,7 +517,7 @@ export async function processEvent(event: any) {
     }
 
     case 'AUCTION_RESOLVED': {
-      await prisma.auction.update({
+      await db.auction.update({
         where: { auctionId: listingId },
         data: {
           status: 'Finalized',
@@ -485,7 +530,7 @@ export async function processEvent(event: any) {
     }
 
     case 'OFFER_MADE': {
-      await prisma.offer.upsert({
+      await db.offer.upsert({
         where: { offerId: BigInt(data.offer_id) },
         create: {
           offerId: BigInt(data.offer_id),
@@ -510,14 +555,14 @@ export async function processEvent(event: any) {
     }
 
     case 'OFFER_ACCEPTED': {
-      await prisma.offer.update({
+      await db.offer.update({
         where: { offerId: BigInt(data.offer_id) },
         data: {
           status: 'Accepted',
           updatedAtLedger: ledgerSequence,
         }
       });
-      await prisma.listing.update({
+      await db.listing.update({
         where: { listingId: BigInt(data.listing_id) },
         data: {
           status: 'Sold',
@@ -529,7 +574,7 @@ export async function processEvent(event: any) {
     }
 
     case 'OFFER_REJECTED': {
-      await prisma.offer.update({
+      await db.offer.update({
         where: { offerId: BigInt(data.offer_id) },
         data: {
           status: 'Rejected',
@@ -540,7 +585,7 @@ export async function processEvent(event: any) {
     }
 
     case 'OFFER_WITHDRAWN': {
-      await prisma.offer.update({
+      await db.offer.update({
         where: { offerId: BigInt(data.offer_id) },
         data: {
           status: 'Withdrawn',
@@ -553,5 +598,5 @@ export async function processEvent(event: any) {
   }
 
   // Broadcast to any connected SSE clients after the DB write is complete.
-  emitSSEEvent(event);
+  if (!tx) emitSSEEvent(event);
 }
