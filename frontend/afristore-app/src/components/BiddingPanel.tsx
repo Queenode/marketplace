@@ -73,8 +73,8 @@ export function BiddingPanel({
   const [bidAmount, setBidAmount] = useState("");
   const [bidSuccess, setBidSuccess] = useState(false);
 
-  const currentBidXlm = Number(auction.highest_bid) / 10_000_000;
-  const reserveXlm = Number(auction.reserve_price) / 10_000_000;
+  const currentBidXlm = parseFloat(stroopsToXlm(auction.highest_bid));
+  const reserveXlm = parseFloat(stroopsToXlm(auction.reserve_price));
   const minimumBid = Math.max(
     currentBidXlm > 0 ? currentBidXlm + 0.0000001 : reserveXlm,
     reserveXlm
