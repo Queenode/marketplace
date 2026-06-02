@@ -116,10 +116,22 @@ export async function revertLedgers(safeAtLedger: number): Promise<void> {
   console.log(`[Reorg] Rollback complete. Resuming from ledger ${safeAtLedger + 1}`);
 }
 
+/** SyncState fields for a ledger advance; omits hash when fetch failed so we keep the prior checkpoint. */
+export function buildSyncStateLedgerData(
+  lastLedger: number,
+  ledgerHash: string | null
+): { lastLedger: number; lastLedgerHash?: string } {
+  if (ledgerHash !== null) {
+    return { lastLedger, lastLedgerHash: ledgerHash };
+  }
+  return { lastLedger };
+}
+
 export async function validateHashContinuity(
   syncState: { lastLedger: number; lastLedgerHash: string | null },
   rpcServer: rpc.Server
 ): Promise<boolean> {
+  // No stored hash (initial sync or prior hash fetch failure) — cannot detect re-org.
   if (syncState.lastLedger > 0 && syncState.lastLedgerHash) {
     try {
       const ledgersRes = await rpcServer.getLedgers({
@@ -229,10 +241,7 @@ export async function startPolling() {
           const toInsert = await applyDecodedEvents(decodedEvents, tx);
           const updated = await tx.syncState.update({
             where: { id: 1 },
-            data: {
-              lastLedger: maxLedger,
-              lastLedgerHash: latestHash,
-            },
+            data: buildSyncStateLedgerData(maxLedger, latestHash),
           });
 
           return { updatedState: updated, newEvents: toInsert };
@@ -256,10 +265,7 @@ export async function startPolling() {
 
         const updatedState = await prisma.syncState.update({
           where: { id: 1 },
-          data: {
-            lastLedger: networkLatestLedger,
-            lastLedgerHash: latestHash,
-          },
+          data: buildSyncStateLedgerData(networkLatestLedger, latestHash),
         });
 
         updateSyncMetrics(updatedState.lastLedger, networkLatestLedger);
