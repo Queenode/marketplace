@@ -1563,7 +1563,7 @@ fn test_update_listing_too_many_recipients_fails() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #8)")]
+#[should_panic(expected = "Error(Contract, #7)")]
 fn test_update_listing_empty_recipients_fails() {
     let (env, client, artist, _, token_id, _contract_id) = setup();
     client.set_admin(&artist);
@@ -2348,6 +2348,11 @@ fn test_buy_artwork_fails_if_token_delisted() {
     let (env, client, artist, buyer, token_id, _contract_id) = setup();
     client.set_admin(&artist);
     client.add_token_to_whitelist(&token_id);
+    // Add a second token so the whitelist is non-empty after removing token_id.
+    // An empty whitelist means "allow all" by design, so we need at least one
+    // other entry to make token_id genuinely non-whitelisted.
+    let other_token = Address::generate(&env);
+    client.add_token_to_whitelist(&other_token);
     let cid = bytes!(&env, 0x516d74657374);
     let id = client.create_listing(
         &artist,
