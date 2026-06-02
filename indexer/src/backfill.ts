@@ -2,7 +2,7 @@ import { rpc } from '@stellar/stellar-sdk';
 import dotenv from 'dotenv';
 import { pathToFileURL } from 'node:url';
 import prisma from './db.js';
-import { applyDecodedEvents } from './poller.js';
+import { applyDecodedEvents, buildSyncStateLedgerData } from './poller.js';
 import { collectMarketplaceEvents } from './event-sync.js';
 
 dotenv.config();
@@ -92,17 +92,11 @@ export async function runBackfill() {
 
   const { insertedCount } = await prisma.$transaction(async (tx) => {
     const inserted = await applyDecodedEvents(decodedEvents, tx);
+    const ledgerData = buildSyncStateLedgerData(processedLedger, latestHash);
     await tx.syncState.upsert({
       where: { id: 1 },
-      create: {
-        id: 1,
-        lastLedger: processedLedger,
-        lastLedgerHash: latestHash,
-      },
-      update: {
-        lastLedger: processedLedger,
-        lastLedgerHash: latestHash,
-      },
+      create: { id: 1, ...ledgerData },
+      update: ledgerData,
     });
 
     return { insertedCount: inserted.length };

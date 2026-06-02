@@ -84,7 +84,13 @@ vi.mock('@stellar/stellar-sdk', () => ({
   },
 }));
 
-import { processEvent, revertLedgers, validateHashContinuity, startPolling } from '../poller';
+import {
+  processEvent,
+  revertLedgers,
+  validateHashContinuity,
+  buildSyncStateLedgerData,
+  startPolling,
+} from '../poller';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -264,6 +270,21 @@ describe('processEvent — BID_PLACED', () => {
   });
 });
 
+// ── AUCTION_CANCELLED ─────────────────────────────────────────────────────────
+
+describe('processEvent — AUCTION_CANCELLED', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('sets auction status to Cancelled', async () => {
+    await processEvent(makeEvent('AUCTION_CANCELLED', 11n, 'GA_CREATOR', {}, 615));
+
+    expect(mockPrisma.auction.updateMany).toHaveBeenCalledWith({
+      where: { auctionId: 11n },
+      data: expect.objectContaining({ status: 'Cancelled' }),
+    });
+  });
+});
+
 // ── AUCTION_RESOLVED ───────────────────────────────────────────────────────────
 
 describe('processEvent — AUCTION_RESOLVED', () => {
@@ -414,10 +435,38 @@ describe('revertLedgers', () => {
   });
 });
 
+// ── buildSyncStateLedgerData (#244) ───────────────────────────────────────────
+
+describe('buildSyncStateLedgerData', () => {
+  it('includes lastLedgerHash when hash fetch succeeds', () => {
+    expect(buildSyncStateLedgerData(100, 'ledger_hash')).toEqual({
+      lastLedger: 100,
+      lastLedgerHash: 'ledger_hash',
+    });
+  });
+
+  it('omits lastLedgerHash when hash fetch fails so the prior checkpoint is preserved', () => {
+    expect(buildSyncStateLedgerData(100, null)).toEqual({ lastLedger: 100 });
+  });
+});
+
 // ── validateHashContinuity ────────────────────────────────────────────────────
 
 describe('validateHashContinuity', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('returns true and skips RPC when lastLedgerHash is null (#244)', async () => {
+    const mockServer = { getLedgers: vi.fn() } as any;
+
+    const result = await validateHashContinuity(
+      { lastLedger: 100, lastLedgerHash: null },
+      mockServer
+    );
+
+    expect(result).toBe(true);
+    expect(mockServer.getLedgers).not.toHaveBeenCalled();
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it('returns true if network hash matches lastLedgerHash', async () => {
     const mockServer = {
@@ -501,6 +550,13 @@ describe('processEvent — out-of-order events do not throw', () => {
     const data = { winner: 'GB', amount: '100' };
     await expect(
       processEvent(makeEvent('AUCTION_RESOLVED', 99n, 'GA', data, 500))
+    ).resolves.not.toThrow();
+  });
+
+  it('AUCTION_CANCELLED with no prior auction resolves without throwing', async () => {
+    mockPrisma.auction.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      processEvent(makeEvent('AUCTION_CANCELLED', 99n, 'GA', {}, 500))
     ).resolves.not.toThrow();
   });
 });
@@ -588,5 +644,68 @@ describe('startPolling — window floor reset', () => {
     expect(mockPrisma.syncState.create).not.toHaveBeenCalled();
     // The poller must have requested events starting at the window floor
     expect(capturedStartLedger).toBe(expectedWindowFloor);
+  }, 8000);
+});
+
+// ── hash fetch failure (#244) ─────────────────────────────────────────────────
+
+describe('startPolling — hash fetch failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.MARKETPLACE_CONTRACT_ID = 'CTEST';
+  });
+
+  afterEach(() => {
+    delete process.env.MARKETPLACE_CONTRACT_ID;
+  });
+
+  it('advances lastLedger without clearing lastLedgerHash when hash fetch fails', async () => {
+    const networkLatest = 60;
+    const priorHash = 'prev_hash';
+
+    mockPrisma.syncState.upsert.mockResolvedValueOnce({
+      id: 1,
+      lastLedger: 50,
+      lastLedgerHash: priorHash,
+    });
+    mockPrisma.syncState.update.mockResolvedValue({
+      id: 1,
+      lastLedger: networkLatest,
+      lastLedgerHash: priorHash,
+    });
+
+    vi.resetModules();
+    const { startPolling: freshStart } = await import('../poller');
+    const sdkMod = await import('@stellar/stellar-sdk');
+
+    vi.spyOn(sdkMod.rpc.Server.prototype, 'getLatestLedger')
+      .mockResolvedValue({ sequence: networkLatest } as any);
+    vi.spyOn(sdkMod.rpc.Server.prototype, 'getEvents')
+      .mockResolvedValue({ events: [], latestLedger: networkLatest } as any);
+    vi.spyOn(sdkMod.rpc.Server.prototype, 'getLedgers')
+      .mockImplementation(({ startLedger }: { startLedger: number }) => {
+        if (startLedger === 50) {
+          return Promise.resolve({ ledgers: [{ hash: priorHash, sequence: 50 }] });
+        }
+        if (startLedger === networkLatest) {
+          return Promise.reject(new Error('network error'));
+        }
+        return Promise.resolve({ ledgers: [] });
+      });
+
+    freshStart().catch(() => {});
+
+    await vi.waitFor(() => {
+      expect(mockPrisma.syncState.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { lastLedger: networkLatest },
+        })
+      );
+    }, { timeout: 3000 });
+
+    const hashAdvanceUpdate = mockPrisma.syncState.update.mock.calls.find(
+      ([arg]) => arg.data?.lastLedger === networkLatest
+    );
+    expect(hashAdvanceUpdate?.[0].data).not.toHaveProperty('lastLedgerHash');
   }, 8000);
 });
