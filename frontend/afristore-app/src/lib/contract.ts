@@ -29,9 +29,9 @@ import {
 import {
   DEFAULT_TOKEN,
   TokenConfig,
-  getNativeTokenConfig,
   getTokenConfigByAddress,
 } from "@/config/tokens";
+import { fetchListings, fetchAuctions } from "./indexer";
 
 // ── Types mirrored from the Rust contract ────────────────────
 
@@ -253,7 +253,7 @@ export async function createListing(
     );
   }
 
-  const priceStroops = BigInt(Math.round(price * 10_000_000));
+  const priceStroops = xlmToStroops(price);
   const selectedToken = resolveConfiguredToken(tokenAddress);
 
   // If no recipients provided, default to 100% to the artist
@@ -326,7 +326,7 @@ export async function updateListing(
   newTokenAddress: string,
   newRecipients: Array<{ address: string; percentage: number }> = []
 ): Promise<boolean> {
-  const priceStroops = BigInt(Math.round(newPrice * 10_000_000));
+  const priceStroops = xlmToStroops(newPrice);
   const selectedToken = resolveConfiguredToken(newTokenAddress);
 
   const args: xdr.ScVal[] = [
@@ -376,6 +376,7 @@ export async function getArtistListings(artistPublicKey: string): Promise<number
 }
 
 /**
+ * getAllListings — Fetch listings using indexer if possible, fallback to on-chain scan.
  * getAllListings — Fetch every listing from ID 1 up to total.
  * Uses batching to avoid excessive parallel RPC calls.
  */
@@ -385,6 +386,23 @@ export async function getAllListings(): Promise<Listing[]> {
     return getE2eMockListings();
   }
 
+  // Optimized path: Use the indexer (1 RPC/HTTP call)
+  try {
+    const res = await fetchListings({ status: "Active" });
+    if (res.listings && res.listings.length > 0) {
+      return res.listings as Listing[];
+    }
+  } catch (e) {
+    console.warn("[indexer] getAllListings fallback:", e);
+  }
+
+  // Backup path: On-chain scan (N RPC calls)
+  const total = await getTotalListings();
+  const ids = Array.from({ length: total }, (_, i) => i + 1);
+  const results = await Promise.all(
+    ids.map((id) => getListing(id).catch(() => null))
+  );
+  return results.filter((l): l is Listing => l !== null);
   const totalRaw = await getTotalListings();
   const total = Math.min(totalRaw, 1000); // Safety limit
   if (total <= 0) return [];
@@ -446,7 +464,7 @@ export async function makeOffer(
   amountXlm: number,
   tokenAddress: string
 ): Promise<number> {
-  const amountStroops = BigInt(Math.round(amountXlm * 10_000_000));
+  const amountStroops = xlmToStroops(amountXlm);
   const args = [
     new Address(offererPublicKey).toScVal(),
     nativeToScVal(BigInt(listingId), { type: "u64" }),
@@ -515,10 +533,11 @@ export async function createAuction(
   reservePriceXlm: number,
   durationSeconds: number,
   royaltyBps: number = 0,
-  recipients: Array<{ address: string; percentage: number }> = []
+  recipients: Array<{ address: string; percentage: number }> = [],
+  tokenAddress: string = DEFAULT_TOKEN.address
 ): Promise<number> {
-  const reserveStroops = BigInt(Math.round(reservePriceXlm * 10_000_000));
-  const nativeToken = getNativeTokenConfig();
+  const reserveStroops = xlmToStroops(reservePriceXlm);
+  const selectedToken = resolveConfiguredToken(tokenAddress);
 
   const finalRecipients = recipients.length > 0
     ? recipients
@@ -527,7 +546,7 @@ export async function createAuction(
   const args: xdr.ScVal[] = [
     new Address(creatorPublicKey).toScVal(),
     nativeToScVal(Buffer.from(metadataCid, "utf-8"), { type: "bytes" }),
-    new Address(nativeToken.address).toScVal(),
+    new Address(selectedToken.address).toScVal(),
     nativeToScVal(reserveStroops, { type: "i128" }),
     nativeToScVal(BigInt(durationSeconds), { type: "u64" }),
     nativeToScVal(royaltyBps, { type: "u32" }),
@@ -553,7 +572,7 @@ export async function placeBid(
   auctionId: number,
   amountXlm: number
 ): Promise<boolean> {
-  const amountStroops = BigInt(Math.round(amountXlm * 10_000_000));
+  const amountStroops = xlmToStroops(amountXlm);
 
   const args: xdr.ScVal[] = [
     new Address(bidderPublicKey).toScVal(),
@@ -617,6 +636,20 @@ export async function getArtistAuctions(
 }
 
 /**
+ * getAllAuctions — Fetch auctions using indexer if possible, fallback to on-chain scan.
+ */
+export async function getAllAuctions(): Promise<Auction[]> {
+  // Optimized path: Use the indexer (1 RPC/HTTP call)
+  try {
+    const raw = await fetchAuctions({ status: "Active" });
+    if (raw && raw.length > 0) {
+      return raw as Auction[];
+    }
+  } catch (e) {
+    console.warn("[indexer] getAllAuctions fallback:", e);
+  }
+
+  // Backup path: On-chain scan (Probing loop)
  * get_total_auctions — Read the total auction count.
  */
 export async function getTotalAuctions(): Promise<number> {
@@ -654,9 +687,26 @@ export async function getAllAuctions(): Promise<Auction[]> {
 }
 
 
-/** Convert stroops (i128 bigint) to XLM display string */
 // ── Utils ───────────────────────────────────────────────────
 
+/**
+ * Converts an XLM amount (JS number) to stroops (bigint) using
+ * string-based arithmetic to avoid floating-point precision loss.
+ *
+ * e.g. BigInt(Math.round(0.0000001 * 10_000_000)) === 0n  ← WRONG
+ *      xlmToStroops(0.0000001)                          === 1n  ← CORRECT
+ */
+export function xlmToStroops(xlm: number): bigint {
+  const isNegative = xlm < 0;
+  const abs = Math.abs(xlm);
+  // toFixed(7) gives the correct 7-decimal string without FP drift
+  const [whole, frac = ""] = abs.toFixed(7).split(".");
+  const fracPadded = frac.padEnd(7, "0").slice(0, 7);
+  const result = BigInt(whole) * 10_000_000n + BigInt(fracPadded);
+  return isNegative ? -result : result;
+}
+
+/** Convert stroops (i128 bigint) to XLM display string */
 export function stroopsToXlm(stroops: bigint): string {
   const whole = stroops / 10_000_000n;
   const frac = stroops % 10_000_000n;
