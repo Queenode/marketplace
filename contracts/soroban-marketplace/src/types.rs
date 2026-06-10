@@ -54,16 +54,15 @@ pub struct Recipient {
 pub struct Listing {
     pub listing_id: u64,
     pub artist: Address,
-    pub metadata_cid: Bytes,
     pub price: i128,
     pub currency: Symbol,
     pub token: Address,
+    pub collection: Address,
+    pub token_id: u64,
     pub recipients: soroban_sdk::Vec<Recipient>,
     pub status: ListingStatus,
     pub owner: Option<Address>,
     pub created_at: u32,
-    pub original_creator: Address,
-    pub royalty_bps: u32,
 }
 
 #[contracttype]
@@ -79,16 +78,15 @@ pub enum AuctionStatus {
 pub struct Auction {
     pub auction_id: u64,
     pub creator: Address,
-    pub metadata_cid: Bytes,
     pub token: Address,
+    pub collection: Address,
+    pub token_id: u64,
     pub reserve_price: i128,
     pub highest_bid: i128,
     pub highest_bidder: Option<Address>,
     pub end_time: u64,
     pub status: AuctionStatus,
     pub recipients: soroban_sdk::Vec<Recipient>,
-    pub royalty_bps: u32,
-    pub original_creator: Address,
 }
 
 #[contracttype]

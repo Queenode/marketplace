@@ -24,11 +24,10 @@ model Listing {
   owner           String?
   price           Decimal  @db.Decimal(32, 7)
   currency        String
-  metadataCid     String
+  collection      String
+  nftTokenId      BigInt
   token           String
   status          String   // "Active", "Sold", "Cancelled", "Auction"
-  royaltyBps      Int      @default(0)
-  originalCreator String?
   recipients      Json?
   createdAtLedger Int
   updatedAtLedger Int
@@ -40,7 +39,8 @@ model Listing {
 model Auction {
   auctionId       BigInt   @id
   creator         String
-  metadataCid     String
+  collection      String
+  nftTokenId      BigInt
   token           String
   reservePrice    Decimal  @db.Decimal(32, 7)
   highestBid      Decimal  @db.Decimal(32, 7)
@@ -48,8 +48,6 @@ model Auction {
   endTime         BigInt
   status          String   // "Active", "Finalized", "Cancelled"
   recipients      Json?
-  royaltyBps      Int      @default(0)
-  originalCreator String
   createdAtLedger Int
   updatedAtLedger Int
   @@index([updatedAtLedger])

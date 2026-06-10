@@ -27,6 +27,7 @@ pub enum Error {
     TokenNotFound = 5,
     MaxSupplyReached = 6,
     NotCreator = 7,
+    InsufficientBalance = 8,
 }
 
 // ─── Storage Keys ─────────────────────────────────────────────────────────────

@@ -60,12 +60,12 @@ router.get('/listings', async (req: Request, res: Response) => {
             if (maxPrice) where.price.lte = maxPrice as string;
         }
 
-        // Search against artist address or metadataCid
+        // Search against artist address or collection
         if (search) {
             const q = search as string;
             where.OR = [
                 { artist: { contains: q, mode: 'insensitive' } },
-                { metadataCid: { contains: q, mode: 'insensitive' } },
+                { collection: { contains: q, mode: 'insensitive' } },
             ];
         }
 
@@ -105,25 +105,10 @@ router.get('/listings/:id', async (req: Request, res: Response) => {
         if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
         const out: any = serialize(listing);
-        // Try to fetch metadata from IPFS gateway if available
-        const gateway = normaliseGateway(process.env.IPFS_GATEWAY || 'https://ipfs.io/ipfs/');
-        try {
-            const cid = listing.metadataCid || null;
-            if (cid) {
-                const url = cid.startsWith('ipfs://') ? `${gateway}${cid.replace(/^ipfs:\/\//, '')}` : `${gateway}${cid}`;
-                const r = await axios.get(url, { timeout: 5000 });
-                out.metadata = r.data;
-            } else {
-                out.metadata = null;
-            }
-        } catch (e) {
-            out.metadata = null;
-        }
-
-        res.json(out);
+        return res.json(out);
     } catch (err) {
         console.error('Error details:', err);
-        res.status(500).json({ error: 'Failed to fetch listing' });
+        res.status(500).json({ error: 'Failed to fetch listing details' });
     }
 });
 

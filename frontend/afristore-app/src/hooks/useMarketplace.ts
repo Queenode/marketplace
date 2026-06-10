@@ -147,15 +147,10 @@ export function useArtistListings(artistPublicKey: string | null) {
 // ── useCreateListing ──────────────────────────────────────────
 
 export interface CreateListingInput {
-  title: string;
-  description: string;
-  artistName: string;
-  year: string;
-  category: string;
+  collectionAddress: string;
+  nftTokenId: number;
   price: number;
   tokenAddress?: string;
-  royaltyBps?: number;
-  imageFile: File;
 }
 
 export function useCreateListing(artistPublicKey: string | null) {
@@ -181,38 +176,14 @@ export function useCreateListing(artistPublicKey: string | null) {
           "listing",
         );
 
-        // Step 1: Upload image to IPFS.
-        setProgress("Uploading image to IPFS…");
-        const imageResult = await uploadImageToIPFS(
-          input.imageFile,
-          input.title,
-        );
-
-        // Step 2: Build metadata JSON.
-        const metadata: ArtworkMetadata = {
-          title: input.title,
-          description: input.description,
-          artist: input.artistName,
-          image: `ipfs://${imageResult.cid}`,
-          year: input.year,
-          category: input.category,
-        };
-
-        // Step 3: Upload metadata to IPFS.
-        setProgress("Uploading metadata to IPFS…");
-        const metadataResult = await uploadMetadataToIPFS(
-          metadata,
-          input.title,
-        );
-
-        // Step 4: Call the Soroban contract.
+        // Step 1: Call the Soroban contract.
         setProgress("Creating on-chain listing…");
         const listingId = await createListing(
           artistPublicKey,
-          metadataResult.cid,
           input.price,
           token.address,
-          input.royaltyBps,
+          input.collectionAddress,
+          input.nftTokenId
         );
 
         // Track successful listing creation

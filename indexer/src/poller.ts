@@ -411,14 +411,9 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
       const artist = chainListing ? chainListing.artist.toString() : data.artist;
       const price = chainListing ? chainListing.price.toString() : data.price;
       const currency = chainListing ? chainListing.currency.toString() : data.currency;
-      const metadataCid = chainListing 
-        ? (chainListing.metadata_cid instanceof Uint8Array 
-            ? new TextDecoder().decode(chainListing.metadata_cid) 
-            : chainListing.metadata_cid.toString())
-        : data.metadata_cid;
+      const collection = chainListing ? chainListing.collection.toString() : data.collection;
+      const nftTokenId = chainListing ? BigInt(chainListing.token_id) : BigInt(data.token_id);
       const token = chainListing ? chainListing.token.toString() : (data.token || '');
-      const royaltyBps = chainListing ? Number(chainListing.royalty_bps) : (data.royalty_bps || 0);
-      const originalCreator = chainListing ? chainListing.original_creator.toString() : artist;
       
       const recipients = chainListing 
         ? chainListing.recipients.map((r: any) => ({
@@ -435,11 +430,10 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
           owner: null,
           price,
           currency,
-          metadataCid,
+          collection,
+          nftTokenId,
           token,
           status: 'Active',
-          royaltyBps,
-          originalCreator,
           recipients,
           createdAtLedger: ledgerSequence,
           updatedAtLedger: ledgerSequence,
@@ -447,9 +441,9 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
         update: {
           artist,
           price,
-          metadataCid,
+          collection,
+          nftTokenId,
           status: 'Active',
-          originalCreator,
           recipients,
           updatedAtLedger: ledgerSequence,
         }
@@ -462,7 +456,8 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
         where: { listingId },
         data: {
           price: data.new_price,
-          metadataCid: data.metadata_cid,
+          collection: data.collection,
+          nftTokenId: BigInt(data.token_id || 0),
           updatedAtLedger: ledgerSequence,
         },
       });
@@ -505,13 +500,8 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
       const reservePrice = chainAuction ? chainAuction.reserve_price.toString() : (data.reserve_price || '0');
       const token = chainAuction ? chainAuction.token.toString() : (data.token || '');
       const endTime = chainAuction ? BigInt(chainAuction.end_time) : BigInt(data.end_time || 0);
-      const royaltyBps = chainAuction ? Number(chainAuction.royalty_bps) : Number(data.royalty_bps || 0);
-      const originalCreator = chainAuction ? chainAuction.original_creator.toString() : creator;
-      const metadataCid = chainAuction 
-        ? (chainAuction.metadata_cid instanceof Uint8Array 
-            ? new TextDecoder().decode(chainAuction.metadata_cid) 
-            : chainAuction.metadata_cid.toString())
-        : (data.metadata_cid || '');
+      const collection = chainAuction ? chainAuction.collection.toString() : data.collection;
+      const nftTokenId = chainAuction ? BigInt(chainAuction.token_id) : BigInt(data.token_id || 0);
       const recipients = chainAuction 
         ? chainAuction.recipients.map((r: any) => ({
             address: r.address.toString(),
@@ -524,7 +514,8 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
         create: {
           auctionId: listingId,
           creator,
-          metadataCid,
+          collection,
+          nftTokenId,
           token,
           reservePrice,
           highestBid: '0',
@@ -532,21 +523,18 @@ export async function processEvent(event: any, tx?: any, skipInsert = false) {
           endTime,
           status: 'Active',
           recipients,
-          royaltyBps,
-          originalCreator,
           createdAtLedger: ledgerSequence,
           updatedAtLedger: ledgerSequence,
         },
         update: {
           creator,
-          metadataCid,
+          collection,
+          nftTokenId,
           token,
           reservePrice,
           endTime,
           status: 'Active',
           recipients,
-          royaltyBps,
-          originalCreator,
           updatedAtLedger: ledgerSequence,
         }
       });

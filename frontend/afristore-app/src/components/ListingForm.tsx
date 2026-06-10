@@ -43,15 +43,11 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
 
   const [preview, setPreview] = useState<string | null>(null);
   const [form, setForm] = useState({
-    title: "",
-    description: "",
-    artistName: "",
-    year: new Date().getFullYear().toString(),
-    category: ART_CATEGORIES[0],
+    collectionAddress: "",
+    nftTokenId: 0,
     price: 10,
     tokenAddress: DEFAULT_TOKEN.address,
   });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
   const [currentMetadata, setCurrentMetadata] = useState<ArtworkMetadata | null>(null);
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
@@ -120,7 +116,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
         listingId: listing.listing_id,
         originalTokenAddress: listing.token,
         ...form,
-        imageFile: selectedFile || undefined,
+        title: "", description: "", artistName: "", year: "", category: "",
         currentMetadata,
       });
       if (success) {
@@ -128,8 +124,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
         onSuccess?.(listing.listing_id);
       }
     } else if (!isEdit) {
-      if (!selectedFile) return;
-      const id = await create({ ...form, imageFile: selectedFile });
+      const id = await create({ ...form });
       if (id !== null) {
         setSuccessId(id);
         posthog.capture("Listing Created", { listing_id: id, price_xlm: form.price });
@@ -164,11 +159,8 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                     setPreview(null);
                     setSelectedFile(null);
                     setForm({
-                      title: "",
-                      description: "",
-                      artistName: "",
-                      year: new Date().getFullYear().toString(),
-                      category: ART_CATEGORIES[0],
+                      collectionAddress: "",
+                      nftTokenId: 0,
                       price: 10,
                       tokenAddress: defaultToken.address,
                     });
@@ -202,117 +194,32 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
             </header>
 
             <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Image upload zone */}
-            <div
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-                onClick={() => !isEdit && fileRef.current?.click()}
-                className={`group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-brand-200 bg-brand-50/30 p-12 text-center transition-all ${!isEdit ? "cursor-pointer hover:border-brand-400 hover:bg-brand-50/60" : ""}`}
-            >
-                {preview ? (
-                <div className="relative h-64 w-full">
-                    <Image src={preview} alt="Preview" fill className="object-contain rounded-2xl" unoptimized />
-                    {!isEdit && (
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-2xl transition-opacity">
-                            <p className="text-white text-base font-bold underline underline-offset-4">Click to change</p>
-                        </div>
-                    )}
-                </div>
-                ) : (
-                <div className="py-4">
-                    <div className="mx-auto w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <Upload size={32} className="text-brand-500" />
-                    </div>
-                    <p className="text-lg font-semibold text-brand-950 font-display">
-                    Select Your Artwork
-                    </p>
-                    <p className="mt-1 text-sm text-brand-400 font-inter">PNG, JPG, GIF or WEBP — max 50 MB</p>
-                </div>
-                )}
-                <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFile(file);
-                }}
-                />
-            </div>
-
             {/* Fields */}
             <div className="grid gap-6 sm:grid-cols-2">
                 <div className="sm:col-span-2 space-y-2">
                 <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
-                    Title *
+                    Collection Address *
                 </label>
                 <input
                     required
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    value={form.collectionAddress}
+                    onChange={(e) => setForm({ ...form, collectionAddress: e.target.value })}
                     className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
-                    placeholder="e.g. Echoes of the Serengeti"
+                    placeholder="e.g. C..."
                 />
                 </div>
 
                 <div className="sm:col-span-2 space-y-2">
                 <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
-                    Description
-                </label>
-                <textarea
-                    rows={4}
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
-                    placeholder="Describe the soul of this artwork…"
-                />
-                </div>
-
-                <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
-                    Artist Name *
-                </label>
-                <input
-                    required
-                    value={form.artistName}
-                    onChange={(e) => setForm({ ...form, artistName: e.target.value })}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
-                    placeholder="Your name or alias"
-                />
-                </div>
-
-                <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
-                    Creation Year *
+                    NFT Token ID *
                 </label>
                 <input
                     required
                     type="number"
-                    min={1900}
-                    max={2100}
-                    value={form.year}
-                    onChange={(e) => setForm({ ...form, year: e.target.value })}
+                    value={form.nftTokenId}
+                    onChange={(e) => setForm({ ...form, nftTokenId: parseInt(e.target.value) })}
                     className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
                 />
-                </div>
-
-                <div className="space-y-2">
-                    <label className="block text-sm font-bold text-gray-950 uppercase tracking-wider font-inter">
-                        Category *
-                    </label>
-                    <select
-                        required
-                        value={form.category}
-                        onChange={(e) => setForm({ ...form, category: e.target.value })}
-                        className="w-full appearance-none rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
-                    >
-                        {ART_CATEGORIES.map((cat) => (
-                            <option key={cat} value={cat}>
-                                {cat}
-                            </option>
-                        ))}
-                    </select>
                 </div>
 
                 <div className="space-y-2">
@@ -386,7 +293,7 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                 )}
                 <GuardButton
                     type="submit"
-                    disabled={isLoading || !hasTokenOptions || (!isEdit && !selectedFile)}
+                    disabled={isLoading || !hasTokenOptions}
                     actionName={isEdit ? "to update your listing" : "to list your artwork"}
                     className="flex-[2] flex items-center justify-center gap-3 rounded-2xl bg-brand-500 py-5 text-xl font-bold text-white shadow-2xl shadow-brand-500/30 hover:bg-brand-600 hover:scale-[1.01] transition-all active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
                 >

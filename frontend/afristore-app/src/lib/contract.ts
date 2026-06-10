@@ -17,7 +17,7 @@ import {
   BASE_FEE,
 } from "@stellar/stellar-sdk";
 import { config } from "./config";
-import { signWithFreighter } from "./freighter";
+import { getConnectedPublicKey, signWithFreighter } from "./freighter";
 import { mapSorobanErrorMessage } from "./errors";
 import {
   isE2eMockChain,
@@ -88,6 +88,13 @@ function getNetworkPassphrase(): string {
   return config.networkPassphrase;
 }
 
+
+const READ_ONLY_CALLER_PUBLIC_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+
+async function getReadOnlyCallerPublicKey(): Promise<string> {
+  const connectedPublicKey = await getConnectedPublicKey();
+  return connectedPublicKey ?? READ_ONLY_CALLER_PUBLIC_KEY;
+}
 function resolveConfiguredToken(tokenAddress: string = DEFAULT_TOKEN.address): TokenConfig {
   const token = getTokenConfigByAddress(tokenAddress);
   if (!token) {
@@ -236,20 +243,20 @@ function parseAuctionFromScVal(raw: unknown): Auction {
  */
 export async function createListing(
   artistPublicKey: string,
-  metadataCid: string,
   price: number,
   tokenAddress: string = DEFAULT_TOKEN.address,
-  royaltyBps: number = 0,
+  collectionAddress: string,
+  nftTokenId: number,
   recipients: Array<{ address: string; percentage: number }> = []
 ): Promise<number> {
   if (isE2eMockChain()) {
     if (typeof window !== "undefined") registerE2eMockListingsOnWindow();
     return e2eMockCreateListing(
       artistPublicKey,
-      metadataCid,
       price,
       tokenAddress,
-      royaltyBps
+      collectionAddress,
+      nftTokenId
     );
   }
 
@@ -263,11 +270,11 @@ export async function createListing(
 
   const args: xdr.ScVal[] = [
     new Address(artistPublicKey).toScVal(),
-    nativeToScVal(Buffer.from(metadataCid, "utf-8"), { type: "bytes" }),
     nativeToScVal(priceStroops, { type: "i128" }),
     nativeToScVal(selectedToken.symbol, { type: "symbol" }),
     new Address(selectedToken.address).toScVal(),
-    nativeToScVal(royaltyBps, { type: "u32" }),
+    new Address(collectionAddress).toScVal(),
+    nativeToScVal(nftTokenId, { type: "u64" }),
     nativeToScVal(finalRecipients.map(r => ({
         address: new Address(r.address),
         percentage: r.percentage
@@ -349,9 +356,9 @@ export async function updateListing(
  * get_listing — Fetch a single listing by ID.
  */
 export async function getListing(listingId: number): Promise<Listing> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args = [nativeToScVal(BigInt(listingId), { type: "u64" })];
-  const retVal = await invokeContract(DUMMY_KEY, "get_listing", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_listing", args, true);
   return parseListingFromScVal(retVal);
 }
 
@@ -359,8 +366,8 @@ export async function getListing(listingId: number): Promise<Listing> {
  * get_total_listings — Read the total listing count.
  */
 export async function getTotalListings(): Promise<number> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
-  const retVal = await invokeContract(DUMMY_KEY, "get_total_listings", [], true);
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
+  const retVal = await invokeContract(callerPublicKey, "get_total_listings", [], true);
   return Number(scValToNative(retVal));
 }
 
@@ -368,9 +375,9 @@ export async function getTotalListings(): Promise<number> {
  * get_artist_listings — Fetch all listing IDs for an artist.
  */
 export async function getArtistListings(artistPublicKey: string): Promise<number[]> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args = [new Address(artistPublicKey).toScVal()];
-  const retVal = await invokeContract(DUMMY_KEY, "get_artist_listings", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_artist_listings", args, true);
   const ids = scValToNative(retVal) as bigint[];
   return ids.map(Number);
 }
@@ -404,7 +411,6 @@ export async function getAllListings(): Promise<Listing[]> {
   );
   return results.filter((l): l is Listing => l !== null);
   const totalRaw = await getTotalListings();
-  const total = Math.min(totalRaw, 1000); // Safety limit
   if (total <= 0) return [];
 
   const listings: Listing[] = [];
@@ -494,24 +500,24 @@ export async function rejectOffer(ownerPublicKey: string, offerId: number): Prom
 }
 
 export async function getOffer(offerId: number): Promise<Offer> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args = [nativeToScVal(BigInt(offerId), { type: "u64" })];
-  const retVal = await invokeContract(DUMMY_KEY, "get_offer", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_offer", args, true);
   return parseOfferFromScVal(retVal);
 }
 
 export async function getListingOffers(listingId: number): Promise<number[]> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args = [nativeToScVal(BigInt(listingId), { type: "u64" })];
-  const retVal = await invokeContract(DUMMY_KEY, "get_listing_offers", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_listing_offers", args, true);
   const ids = scValToNative(retVal) as bigint[];
   return ids.map(Number);
 }
 
 export async function getOffererOffers(offererPublicKey: string): Promise<number[]> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args = [new Address(offererPublicKey).toScVal()];
-  const retVal = await invokeContract(DUMMY_KEY, "get_offerer_offers", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_offerer_offers", args, true);
   const ids = scValToNative(retVal) as bigint[];
   return ids.map(Number);
 }
@@ -604,13 +610,13 @@ export async function finalizeAuction(
  * get_auction — Fetch a single auction by ID (read-only).
  */
 export async function getAuction(auctionId: number): Promise<Auction> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
 
   const args: xdr.ScVal[] = [
     nativeToScVal(BigInt(auctionId), { type: "u64" }),
   ];
 
-  const retVal = await invokeContract(DUMMY_KEY, "get_auction", args, true);
+  const retVal = await invokeContract(callerPublicKey, "get_auction", args, true);
   return parseAuctionFromScVal(retVal);
 }
 
@@ -620,12 +626,12 @@ export async function getAuction(auctionId: number): Promise<Auction> {
 export async function getArtistAuctions(
   artistPublicKey: string
 ): Promise<number[]> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
 
   const args: xdr.ScVal[] = [new Address(artistPublicKey).toScVal()];
 
   const retVal = await invokeContract(
-    DUMMY_KEY,
+    callerPublicKey,
     "get_artist_auctions",
     args,
     true
@@ -650,19 +656,7 @@ export async function getAllAuctions(): Promise<Auction[]> {
   }
 
   // Backup path: On-chain scan (Probing loop)
- * get_total_auctions — Read the total auction count.
- */
-export async function getTotalAuctions(): Promise<number> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
-  const retVal = await invokeContract(DUMMY_KEY, "get_total_auctions", [], true);
-  return Number(scValToNative(retVal));
-}
-
-/**
- * getAllAuctions — Fetch all auctions from ID 1 up to total.
- * Uses batching to avoid overwhelming the RPC server.
- */
-export async function getAllAuctions(): Promise<Auction[]> {
+  // get_total_auctions — Read the total auction count.
   const totalRaw = await getTotalAuctions();
   const total = Math.min(totalRaw, 1000); // Safety limit
   if (total <= 0) return [];
@@ -684,6 +678,15 @@ export async function getAllAuctions(): Promise<Auction[]> {
   }
   
   return auctions;
+}
+
+/**
+ * get_total_auctions — Read the total auction count.
+ */
+export async function getTotalAuctions(): Promise<number> {
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
+  const retVal = await invokeContract(callerPublicKey, "get_total_auctions", [], true);
+  return Number(scValToNative(retVal));
 }
 
 
@@ -756,13 +759,13 @@ export async function reinstateArtist(
 export async function isArtistRevoked(
   artistPublicKey: string
 ): Promise<boolean> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   const args: xdr.ScVal[] = [
     new Address(artistPublicKey).toScVal(),
   ];
 
   try {
-    const retVal = await invokeContract(DUMMY_KEY, "is_artist_revoked", args, true);
+    const retVal = await invokeContract(callerPublicKey, "is_artist_revoked", args, true);
     return scValToNative(retVal) as boolean;
   } catch {
     return false;
@@ -803,9 +806,9 @@ export async function removeTokenFromWhitelist(
  * get_token_whitelist — Fetch all whitelisted tokens.
  */
 export async function getTokenWhitelist(): Promise<string[]> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   try {
-    const retVal = await invokeContract(DUMMY_KEY, "get_token_whitelist", [], true);
+    const retVal = await invokeContract(callerPublicKey, "get_token_whitelist", [], true);
     const native = scValToNative(retVal) as Address[];
     return native.map(a => a.toString());
   } catch {
@@ -817,9 +820,9 @@ export async function getTokenWhitelist(): Promise<string[]> {
  * get_treasury — Fetch current treasury address.
  */
 export async function getTreasury(): Promise<string | null> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   try {
-    const retVal = await invokeContract(DUMMY_KEY, "get_treasury", [], true);
+    const retVal = await invokeContract(callerPublicKey, "get_treasury", [], true);
     const native = scValToNative(retVal);
     return native ? (native as Address).toString() : null;
   } catch {
@@ -831,9 +834,9 @@ export async function getTreasury(): Promise<string | null> {
  * get_protocol_fee — Fetch current protocol fee (bps).
  */
 export async function getProtocolFee(): Promise<number> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   try {
-    const retVal = await invokeContract(DUMMY_KEY, "get_protocol_fee", [], true);
+    const retVal = await invokeContract(callerPublicKey, "get_protocol_fee", [], true);
     return Number(scValToNative(retVal));
   } catch {
     return 0;
@@ -844,9 +847,9 @@ export async function getProtocolFee(): Promise<number> {
  * get_admin — Fetch current admin address.
  */
 export async function getAdmin(): Promise<string | null> {
-  const DUMMY_KEY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const callerPublicKey = await getReadOnlyCallerPublicKey();
   try {
-    const retVal = await invokeContract(DUMMY_KEY, "get_admin", [], true);
+    const retVal = await invokeContract(callerPublicKey, "get_admin", [], true);
     // get_admin returns Option<Address>
     const native = scValToNative(retVal);
     if (!native) return null;

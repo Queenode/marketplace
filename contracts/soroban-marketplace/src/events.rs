@@ -30,7 +30,8 @@ pub struct ListingCreatedEvent {
     pub artist: Address,
     pub price: i128,
     pub currency: Symbol,
-    pub metadata_cid: Bytes,
+    pub collection: Address,
+    pub token_id: u64,
     pub ledger_sequence: u32,
 }
 
@@ -59,7 +60,8 @@ pub struct ListingUpdatedEvent {
     pub listing_id: u64,
     pub artist: Address,
     pub new_price: i128,
-    pub metadata_cid: Bytes,
+    pub collection: Address,
+    pub token_id: u64,
     pub ledger_sequence: u32,
 }
 
@@ -71,6 +73,8 @@ pub struct AuctionCreatedEvent {
     pub creator: Address,
     pub reserve_price: i128,
     pub token: Address,
+    pub collection: Address,
+    pub token_id: u64,
     pub end_time: u64,
 }
 
