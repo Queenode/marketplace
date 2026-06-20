@@ -10,6 +10,8 @@ import { useArtistListings, useCancelListing } from "@/hooks/useMarketplace";
 import { ListingForm } from "@/components/ListingForm";
 import { AuctionForm } from "@/components/AuctionForm";
 import { stroopsToXlm, Listing } from "@/lib/contract";
+import { OwnedNFTGallery } from "@/components/OwnedNFTGallery";
+import { OwnedToken } from "@/lib/indexer";
 import { Plus, Package, XCircle, Wallet, Edit2, Activity, TrendingUp, Gavel } from "lucide-react";
 import { WalletGuard } from "@/components/WalletGuard";
 import { SUPPORTED_TOKENS } from "@/config/tokens";
@@ -29,6 +31,7 @@ export default function DashboardPage() {
   const { cancel, isCancelling } = useCancelListing(publicKey);
   const [tab, setTab] = useState<Tab>("listings");
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
+  const [selectedNFTToList, setSelectedNFTToList] = useState<OwnedToken | null>(null);
 
   const activeCnt = listings.filter((l: Listing) => l.status === "Active").length;
   const soldCnt = listings.filter((l: Listing) => l.status === "Sold").length;
@@ -121,7 +124,10 @@ export default function DashboardPage() {
 
           <div className="mb-10 flex flex-wrap gap-2 border-b border-white/5 pb-px overflow-x-auto no-scrollbar scroll-smooth">
             <button
-              onClick={() => setTab("listings")}
+              onClick={() => {
+                setTab("listings");
+                setSelectedNFTToList(null);
+              }}
               className={clsx(
                 "group relative flex items-center gap-3 px-6 sm:px-8 py-5 text-sm font-bold transition-all duration-500 whitespace-nowrap",
                 tab === "listings" ? "text-brand-400" : "text-white/40 hover:text-white"
@@ -173,13 +179,20 @@ export default function DashboardPage() {
           <div className="animate-fade-in duration-700">
             {tab === "list" ? (
               <div className="w-full">
-                <ListingForm
-                  onSuccess={() => {
-                    refresh();
-                    setTab("listings");
-                  }}
-                  onCancel={() => setTab("listings")}
-                />
+                {selectedNFTToList ? (
+                  <ListingForm
+                    prefilledCollectionAddress={selectedNFTToList.collectionAddress}
+                    prefilledTokenId={selectedNFTToList.tokenId}
+                    onSuccess={() => {
+                      refresh();
+                      setTab("listings");
+                      setSelectedNFTToList(null);
+                    }}
+                    onCancel={() => setSelectedNFTToList(null)}
+                  />
+                ) : (
+                  <OwnedNFTGallery onSelect={(nft) => setSelectedNFTToList(nft)} />
+                )}
               </div>
             ) : tab === "auction" ? (
               <div className="w-full">

@@ -29,11 +29,13 @@ export const ART_CATEGORIES = [
 
 interface ListingFormProps {
   listing?: Listing; // If provided, we are in EDIT mode
+  prefilledCollectionAddress?: string;
+  prefilledTokenId?: number;
   onSuccess?: (listingId: number) => void;
   onCancel?: () => void;
 }
 
-export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) {
+export function ListingForm({ listing, prefilledCollectionAddress, prefilledTokenId, onSuccess, onCancel }: ListingFormProps) {
   const isEdit = !!listing;
   const { publicKey } = useWalletContext();
   const { tokens: availableTokens } = useSupportedTokens();
@@ -43,8 +45,8 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
 
 
   const [form, setForm] = useState({
-    collectionAddress: "",
-    nftTokenId: 0,
+    collectionAddress: prefilledCollectionAddress || "",
+    nftTokenId: prefilledTokenId !== undefined ? prefilledTokenId : 0,
     price: 10,
     tokenAddress: DEFAULT_TOKEN.address,
   });
@@ -187,9 +189,10 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                 </label>
                 <input
                     required
+                    disabled={!!prefilledCollectionAddress || isEdit}
                     value={form.collectionAddress}
                     onChange={(e) => setForm({ ...form, collectionAddress: e.target.value })}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter disabled:opacity-60 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     placeholder="e.g. C..."
                 />
                 </div>
@@ -201,9 +204,10 @@ export function ListingForm({ listing, onSuccess, onCancel }: ListingFormProps) 
                 <input
                     required
                     type="number"
+                    disabled={prefilledTokenId !== undefined || isEdit}
                     value={form.nftTokenId}
                     onChange={(e) => setForm({ ...form, nftTokenId: parseInt(e.target.value) })}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50/50 px-5 py-4 text-base focus:border-brand-500 focus:bg-white focus:outline-none transition-all shadow-sm font-inter disabled:opacity-60 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 </div>
 
