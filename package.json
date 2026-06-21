@@ -1,0 +1,19 @@
+{
+  "name": "marketplace",
+  "version": "1.0.0",
+  "description": "> Decentralized marketplace for African art, built on Stellar + Soroban smart contracts.",
+  "main": "index.js",
+  "workspaces": [
+    "frontend/afristore-app",
+    "indexer"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm --workspace=indexer run dev\" \"npm --workspace=frontend/afristore-app run dev\" \"npm --workspace=indexer run crank\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.2.3"
+  }
+}

@@ -8,12 +8,13 @@ import { getListing, getAuction, stroopsToXlm } from "@/lib/contract";
 import { fetchMetadata, cidToGatewayUrl } from "@/lib/ipfs";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata({
-  params,
-}: PageProps): Promise<Metadata> {
+export async function generateMetadata(
+  props: PageProps
+): Promise<Metadata> {
+  const params = await props.params;
   const { id } = params;
 
   try {
@@ -95,6 +96,7 @@ export async function generateMetadata({
   }
 }
 
-export default function ListingPage({ params }: PageProps) {
+export default async function ListingPage(props: PageProps) {
+  const params = await props.params;
   return <ListingClient id={params.id} />;
 }

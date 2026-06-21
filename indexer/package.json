@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "crank": "tsx src/crank.ts",
     "backfill": "tsx src/backfill.ts",
     "build": "npm run prisma:generate && tsc",
     "prestart": "npx prisma migrate deploy && npm run migrate:status",

@@ -90,22 +90,25 @@ cd scripts/deploy
 # See contracts/launchpad/README.md for collection factory deployment
 ```
 
-### 2. Start the indexer
+### 2. Start the Local Environment
+
+Instead of starting the indexer and frontend in separate terminals, we use a unified startup script at the root:
 
 ```bash
-cd indexer
-cp .env.example .env       # fill in DATABASE_URL, MARKETPLACE_CONTRACT_ID, etc.
-npx prisma migrate deploy
-npm install && npm start
+# 1. Ensure you have copied the environment files:
+cd indexer && cp .env.example .env
+cd ../frontend/afristore-app && cp .env.example .env.local
+cd ../..
+
+# 2. Run the database migrations for the indexer:
+cd indexer && npx prisma migrate deploy && cd ..
+
+# 3. Install dependencies and start all services concurrently:
+npm install
+npm run dev
 ```
 
-### 3. Start the frontend
-
-```bash
-cd frontend/afristore-app
-cp .env.example .env.local # fill in contract ID + Pinata keys + indexer URL
-npm install && npm run dev
-```
+This will concurrently start the frontend (Next.js), the indexer backend, and a Keep-Alive bot (`crank`) to ensure testnet contracts are not archived.
 
 Open [http://localhost:3000](http://localhost:3000)
 
@@ -142,6 +145,7 @@ Open [http://localhost:3000](http://localhost:3000)
 - Rate limiting via express-rate-limit
 - REST API: listings, auctions, offers, collections, wallet activity, royalty stats
 - Stores all events, listings, auctions, offers, and collections in PostgreSQL
+- Includes a background **Keep-Alive Bot (`crank.ts`)** that periodically simulates reads on active contracts to bump their Time-To-Live (TTL) and prevent state archival on testnet.
 
 ## Indexer API Endpoints
 
