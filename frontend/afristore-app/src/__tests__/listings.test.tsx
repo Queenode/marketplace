@@ -41,10 +41,7 @@ jest.mock("@/hooks/useUserActivity", () => ({
 
 describe("Regression Test: Invalid Listing IDs", () => {
   it("renders Artwork Not Found state for invalid IDs", async () => {
-    const ui = await ListingDetailPage({
-      params: Promise.resolve({ id: "1" }),
-    });
-    render(ui);
+    render(<ListingDetailPage params={Promise.resolve({ id: "1" })} />);
 
     // Wait for the async loading to finish and show error
     await waitFor(() => {
