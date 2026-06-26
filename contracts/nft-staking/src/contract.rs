@@ -1,6 +1,4 @@
-use soroban_sdk::{
-    contract, contractimpl, panic_with_error, Address, Env, IntoVal,
-};
+use soroban_sdk::{contract, contractimpl, panic_with_error, Address, Env, IntoVal};
 
 use crate::events::*;
 use crate::storage::*;
@@ -23,7 +21,9 @@ impl NftStaking {
     }
 
     pub fn get_admin(env: Env) -> Option<Address> {
-        env.storage().persistent().get::<_, Address>(&DataKey::Admin)
+        env.storage()
+            .persistent()
+            .get::<_, Address>(&DataKey::Admin)
     }
 
     fn require_admin(env: &Env) {
@@ -77,7 +77,11 @@ impl NftStaking {
         };
 
         save_staked_position(&env, &position_key, &position);
-        add_user_stake(&env, &user, DataKey::StakedPosition(user.clone(), token_address.clone(), token_id));
+        add_user_stake(
+            &env,
+            &user,
+            DataKey::StakedPosition(user.clone(), token_address.clone(), token_id),
+        );
         set_total_staked(&env, get_total_staked(&env) + 1);
 
         StakedEvent {

@@ -30,20 +30,23 @@ pub struct RewardsClaimedEvent {
 impl StakedEvent {
     #[allow(deprecated)]
     pub fn publish(self, env: &Env) {
-        env.events().publish((soroban_sdk::symbol_short!("staked"),), self);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("staked"),), self);
     }
 }
 
 impl UnstakedEvent {
     #[allow(deprecated)]
     pub fn publish(self, env: &Env) {
-        env.events().publish((soroban_sdk::symbol_short!("unstkd"),), self);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("unstkd"),), self);
     }
 }
 
 impl RewardsClaimedEvent {
     #[allow(deprecated)]
     pub fn publish(self, env: &Env) {
-        env.events().publish((soroban_sdk::symbol_short!("reward"),), self);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("reward"),), self);
     }
 }

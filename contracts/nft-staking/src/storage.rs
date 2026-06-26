@@ -24,7 +24,10 @@ pub fn save_staked_position(env: &Env, key: &DataKey, position: &StakedPosition)
 }
 
 pub fn load_staked_position(env: &Env, key: &DataKey) -> Option<StakedPosition> {
-    let res = env.storage().persistent().get::<DataKey, StakedPosition>(key);
+    let res = env
+        .storage()
+        .persistent()
+        .get::<DataKey, StakedPosition>(key);
     if res.is_some() {
         env.storage()
             .persistent()
@@ -88,9 +91,11 @@ pub fn set_total_staked(env: &Env, count: u64) {
     env.storage()
         .persistent()
         .set(&DataKey::TotalStaked, &count);
-    env.storage()
-        .persistent()
-        .extend_ttl(&DataKey::TotalStaked, LEDGER_TTL_THRESHOLD, LEDGER_TTL_BUMP);
+    env.storage().persistent().extend_ttl(
+        &DataKey::TotalStaked,
+        LEDGER_TTL_THRESHOLD,
+        LEDGER_TTL_BUMP,
+    );
 }
 
 pub fn get_total_staked(env: &Env) -> u64 {

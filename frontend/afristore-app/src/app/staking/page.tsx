@@ -401,7 +401,7 @@ export default function StakingPage() {
                   No staked NFTs
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 max-w-sm text-center">
-                  You haven't staked any NFTs yet. Browse your unstaked NFTs and
+                  You haven&apos;t staked any NFTs yet. Browse your unstaked NFTs and
                   start staking to earn rewards.
                 </p>
               </div>
