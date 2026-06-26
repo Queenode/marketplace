@@ -151,6 +151,81 @@ Open [http://localhost:3000](http://localhost:3000)
 - Stores all events, listings, auctions, offers, and collections in PostgreSQL
 - Includes a background **Keep-Alive Bot (`crank.ts`)** that periodically simulates reads on active contracts to bump their Time-To-Live (TTL) and prevent state archival on testnet.
 
+### Royalty Splitter
+
+The `royalty-splitter` contract (`contracts/royalty-splitter/`) is a standalone Soroban contract that splits token royalty flows between multiple beneficiaries according to immutable BPS (basis-point) shares.
+
+**How it works:**
+
+1. **Deploy** — An artist or the Launchpad factory deploys a fresh `RoyaltySplitter` instance per collection.
+2. **Initialize** — Call `initialize(token, beneficiaries, shares)` once to permanently lock in the payment token, beneficiary addresses, and their BPS shares. Shares must sum to exactly 10 000. This call is irreversible.
+3. **Distribute** — Anyone may call `distribute()` at any time. The contract reads its full token balance and transfers each beneficiary's proportional share. The final beneficiary absorbs any integer rounding remainder so no dust is ever trapped.
+
+**Deploying a splitter via the Launchpad (artist flow):**
+
+```bash
+# 1. Build and upload the royalty-splitter WASM
+cd contracts/royalty-splitter
+cargo build --target wasm32-unknown-unknown --release
+SPLITTER_HASH=$(stellar contract upload \
+  --wasm target/wasm32-unknown-unknown/release/royalty_splitter.wasm \
+  --network testnet --source deployer)
+
+# 2. Deploy a splitter instance for the collection
+SPLITTER=$(stellar contract deploy \
+  --wasm-hash $SPLITTER_HASH --network testnet --source creator)
+
+# 3. Initialize with up to 10 beneficiaries (shares must sum to 10 000)
+stellar contract invoke --id $SPLITTER --network testnet --source creator \
+  --fn initialize -- \
+  --token USDC_CONTRACT_ADDRESS \
+  --beneficiaries '["GCREATOR_ADDRESS", "GCOLLABORATOR_ADDRESS"]' \
+  --shares '[7500, 2500]'
+
+# 4. Anyone can trigger a payout at any time
+stellar contract invoke --id $SPLITTER --network testnet --source anyone \
+  --fn distribute
+```
+
+**Key constraints:**
+- Maximum 10 beneficiaries per splitter.
+- Beneficiaries and shares are immutable after `initialize` — deploy a new splitter instance to change splits.
+- `distribute()` requires no authentication, making it safe to automate or call from a keeper bot.
+
+## Crank (Keep-Alive Bot)
+
+Soroban contracts on testnet are subject to state archival: if a contract's ledger entries are not accessed within a certain number of ledgers, they are evicted and the contract stops responding. The **Crank bot** (`indexer/src/crank.ts`) prevents this by periodically simulating cheap read operations against each active contract, refreshing their Time-To-Live (TTL) without any fees or on-chain signatures.
+
+### What it does
+
+On each tick the crank:
+1. Calls `get_protocol_fee` on the main marketplace contract (a read-only function that loads contract state).
+2. Queries the 20 most recently deployed collections from the indexer database and calls `name` on each, keeping the freshest NFT contracts alive.
+
+A failed simulation is logged but never halts the bot — a temporarily unavailable contract does not interrupt the keep-alive cycle for others.
+
+### Configuration
+
+All options are controlled via environment variables in `indexer/.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `CRANK_INTERVAL_MS` | `300000` (5 min) | Milliseconds between keep-alive ticks |
+| `STELLAR_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint used for simulations |
+| `STELLAR_NETWORK_PASSPHRASE` | Test SDF passphrase | Network passphrase for transaction building |
+| `MARKETPLACE_CONTRACT_ID` | _(required)_ | Contract ID of the marketplace to keep alive |
+
+The bot starts automatically as part of `npm run dev` via the root `concurrently` script. It can also be run standalone:
+
+```bash
+cd indexer
+npm run crank
+```
+
+### Graceful shutdown
+
+The crank registers `SIGINT` / `SIGTERM` handlers. On receiving either signal it stops the keep-alive loop and cleanly disconnects the Prisma database client before exiting.
+
 ## Indexer API Endpoints
 
 | Method | Endpoint | Description |
