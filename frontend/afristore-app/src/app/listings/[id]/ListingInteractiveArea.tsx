@@ -15,7 +15,8 @@ import {
 } from "@/lib/contract";
 import { ArtworkMetadata } from "@/lib/ipfs";
 import { useWalletContext } from "@/context/WalletContext";
-import { useBuyArtwork, usePlaceBid } from "@/hooks/useMarketplace";
+import { useBuyArtwork } from "@/hooks/useMarketplace";
+import { usePlaceBid } from "@/hooks/usePlaceBid";
 import { useListingOffers, useMakeOffer } from "@/hooks/useOffers";
 import { useListingActivity } from "@/hooks/useUserActivity";
 import { GuardButton } from "@/components/WalletGuard";
