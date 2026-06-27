@@ -265,6 +265,7 @@ export async function getStakingPoolByNft(
  */
 export async function deployStakingPool(
   creatorPublicKey: string,
+  currencyAddress: string,
   nftAddress: string,
   rewardToken: string,
   rewardRate: bigint,
@@ -272,6 +273,7 @@ export async function deployStakingPool(
 ): Promise<string> {
   const args: xdr.ScVal[] = [
     toAddressScVal(creatorPublicKey),
+    toAddressScVal(currencyAddress),
     toAddressScVal(nftAddress),
     toAddressScVal(rewardToken),
     nativeToScVal(rewardRate, { type: "i128" }),

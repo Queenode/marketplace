@@ -1163,13 +1163,14 @@ fn deploys_staking_pool_for_nft_collection() {
     let salt = BytesN::from_array(&env, &[0xAAu8; 32]);
 
     let pool_a =
-        client.deploy_staking_pool(&creator, &nft_address, &reward_token, &1_000_000i128, &salt);
+        client.deploy_staking_pool(&creator, &reward_token, &nft_address, &reward_token, &1_000_000i128, &salt);
 
     let pool_b = client.get_staking_pool(&nft_address);
     assert_eq!(Some(pool_a), pool_b);
 
     let duplicate = client.try_deploy_staking_pool(
         &creator,
+        &reward_token,
         &nft_address,
         &reward_token,
         &1_000_000i128,

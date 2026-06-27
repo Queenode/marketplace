@@ -27,7 +27,7 @@ export const config = {
     process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ??
     "Test SDF Network ; September 2015",
   pinataGateway:
-    process.env.NEXT_PUBLIC_PINATA_GATEWAY ?? "https://gateway.pinata.cloud",
+    process.env.NEXT_PUBLIC_PINATA_GATEWAY ?? "",
   isDevelopment: process.env.NODE_ENV === "development",
 } as const;
 
@@ -36,6 +36,7 @@ export function assertConfig() {
   if (!config.contractId) missing.push("NEXT_PUBLIC_CONTRACT_ID");
   if (!config.launchpadContractId)
     missing.push("NEXT_PUBLIC_LAUNCHPAD_CONTRACT_ID");
+  if (!config.pinataGateway) missing.push("NEXT_PUBLIC_PINATA_GATEWAY");
   if (missing.length > 0) {
     console.warn(
       `[Afristore] Missing environment variables: ${missing.join(", ")}`,

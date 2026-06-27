@@ -93,8 +93,9 @@ export default function StakingSetupPage() {
 
       const poolAddress = await deployStakingPool(
         publicKey,
+        token.address, // currency
         lookupAddress,
-        token.address,
+        token.address, // reward token
         rateStroops,
         salt,
       );
