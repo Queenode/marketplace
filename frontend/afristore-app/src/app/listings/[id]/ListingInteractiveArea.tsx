@@ -83,8 +83,8 @@ export default function ListingInteractiveArea({
   const isOwn = publicKey === artist;
   const status = listing?.status || auction?.status;
   const isActive = status === "Active";
-  const royaltyBps = (listing as Record<string, unknown>)?.royalty_bps as number | undefined
-    ?? (auction as Record<string, unknown>)?.royalty_bps as number | undefined
+  const royaltyBps = (listing as unknown as { royalty_bps?: number })?.royalty_bps
+    ?? (auction as unknown as { royalty_bps?: number })?.royalty_bps
     ?? 0;
   const royaltyPercent = (royaltyBps / 100).toFixed(1);
   const priceDisplay = listing
