@@ -18,6 +18,7 @@ impl NftStaking {
         reward_token: Address,
         reward_rate: i128,
     ) {
+        admin.require_auth();
         if is_initialized(&env) {
             panic_with_error!(&env, StakingError::AlreadyInitialized);
         }
@@ -38,11 +39,9 @@ impl NftStaking {
     }
 
     pub fn set_admin(env: Env, admin: Address) {
-        let key = DataKey::Admin;
-        if env.storage().persistent().get::<_, Address>(&key).is_some() {
-            panic_with_error!(&env, StakingError::Unauthorized);
-        }
+        Self::require_admin(&env);
         admin.require_auth();
+        let key = DataKey::Admin;
         env.storage().persistent().set(&key, &admin);
     }
 

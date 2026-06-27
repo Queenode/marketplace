@@ -405,6 +405,7 @@ impl Launchpad {
     pub fn deploy_staking_pool(
         env: Env,
         creator: Address,
+        currency: Address,
         nft_address: Address,
         reward_token: Address,
         reward_rate: i128,
@@ -412,6 +413,16 @@ impl Launchpad {
     ) -> Result<Address, Error> {
         storage::extend_instance_ttl(&env);
         creator.require_auth();
+
+        // [FEE] Collect deployment fee
+        let (receiver, fee) = storage::get_platform_fee(&env);
+        if fee > 0 {
+            soroban_sdk::token::TokenClient::new(&env, &currency).transfer(
+                &creator,
+                &receiver,
+                &(fee as i128),
+            );
+        }
 
         if storage::staking_pool_by_nft(&env, &nft_address).is_some() {
             return Err(Error::StakingPoolAlreadyExists);
@@ -442,6 +453,7 @@ impl Launchpad {
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
         storage::extend_instance_ttl(&env);
         storage::require_admin(&env)?;
+        new_admin.require_auth();
         storage::set_admin(&env, &new_admin);
         Ok(())
     }
