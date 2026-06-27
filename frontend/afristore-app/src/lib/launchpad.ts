@@ -217,6 +217,56 @@ export async function getCollectionRecordByAddress(
   return all.find((c) => c.address === collectionAddress) ?? null;
 }
 
+// ── Staking pool factory ──────────────────────────────────────
+
+/**
+ * Look up the staking pool clone for an NFT collection address.
+ */
+export async function getStakingPoolByNft(
+  nftAddress: string,
+): Promise<string | null> {
+  const DUMMY_KEY =
+    "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+  const retVal = await invokeContract(
+    DUMMY_KEY,
+    "get_staking_pool",
+    [toAddressScVal(nftAddress)],
+    true,
+    config.launchpadContractId,
+  );
+  const native = scValToNative(retVal);
+  if (!native) return null;
+  return (native as Address).toString();
+}
+
+/**
+ * Deploy a dedicated NftStaking clone for an NFT collection via the Launchpad.
+ */
+export async function deployStakingPool(
+  creatorPublicKey: string,
+  nftAddress: string,
+  rewardToken: string,
+  rewardRate: bigint,
+  salt: Buffer,
+): Promise<string> {
+  const args: xdr.ScVal[] = [
+    toAddressScVal(creatorPublicKey),
+    toAddressScVal(nftAddress),
+    toAddressScVal(rewardToken),
+    nativeToScVal(rewardRate, { type: "i128" }),
+    nativeToScVal(Uint8Array.from(salt), { type: "bytes" }),
+  ];
+
+  const retVal = await invokeContract(
+    creatorPublicKey,
+    "deploy_staking_pool",
+    args,
+    false,
+    config.launchpadContractId,
+  );
+  return (scValToNative(retVal) as Address).toString();
+}
+
 /**
  * collection_count
  */

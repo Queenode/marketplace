@@ -4,13 +4,39 @@ use crate::events::*;
 use crate::storage::*;
 use crate::types::*;
 
-const REWARDS_PER_SECOND: i128 = 1_000_000;
-
 #[contract]
 pub struct NftStaking;
 
 #[contractimpl]
 impl NftStaking {
+    /// One-shot initializer called by the Launchpad factory after clone deploy.
+    /// Locks in the NFT collection, reward token, and emission rate for this pool.
+    pub fn init(
+        env: Env,
+        admin: Address,
+        nft_address: Address,
+        reward_token: Address,
+        reward_rate: i128,
+    ) {
+        if is_initialized(&env) {
+            panic_with_error!(&env, StakingError::AlreadyInitialized);
+        }
+        if reward_rate <= 0 {
+            panic_with_error!(&env, StakingError::InvalidDuration);
+        }
+
+        set_initialized(&env);
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+        set_nft_address(&env, &nft_address);
+        set_reward_token(&env, &reward_token);
+        set_reward_config(
+            &env,
+            &RewardConfig {
+                rewards_per_second: reward_rate,
+            },
+        );
+    }
+
     pub fn set_admin(env: Env, admin: Address) {
         let key = DataKey::Admin;
         if env.storage().persistent().get::<_, Address>(&key).is_some() {
@@ -26,10 +52,40 @@ impl NftStaking {
             .get::<_, Address>(&DataKey::Admin)
     }
 
+    pub fn get_nft_address(env: Env) -> Address {
+        get_nft_address(&env)
+            .unwrap_or_else(|| panic_with_error!(&env, StakingError::NotInitialized))
+    }
+
+    pub fn get_reward_token(env: Env) -> Address {
+        get_reward_token(&env)
+            .unwrap_or_else(|| panic_with_error!(&env, StakingError::NotInitialized))
+    }
+
+    pub fn get_reward_rate(env: Env) -> i128 {
+        get_reward_config(&env)
+            .map(|c| c.rewards_per_second)
+            .unwrap_or_else(|| panic_with_error!(&env, StakingError::NotInitialized))
+    }
+
     fn require_admin(env: &Env) {
         let admin = Self::get_admin(env.clone())
             .unwrap_or_else(|| panic_with_error!(env, StakingError::Unauthorized));
         admin.require_auth();
+    }
+
+    fn rewards_per_second(env: &Env) -> i128 {
+        get_reward_config(env)
+            .map(|c| c.rewards_per_second)
+            .unwrap_or(0)
+    }
+
+    fn require_pool_nft(env: &Env, token_address: &Address) {
+        let expected = get_nft_address(env)
+            .unwrap_or_else(|| panic_with_error!(env, StakingError::NotInitialized));
+        if *token_address != expected {
+            panic_with_error!(env, StakingError::InvalidToken);
+        }
     }
 
     pub fn set_paused(env: Env, paused: bool) {
@@ -49,6 +105,7 @@ impl NftStaking {
             panic_with_error!(&env, StakingError::ContractPaused);
         }
         user.require_auth();
+        Self::require_pool_nft(&env, &token_address);
 
         let position_key = DataKey::StakedPosition(user.clone(), token_address.clone(), token_id);
 
@@ -98,6 +155,7 @@ impl NftStaking {
             panic_with_error!(&env, StakingError::ContractPaused);
         }
         user.require_auth();
+        Self::require_pool_nft(&env, &token_address);
 
         let position_key = DataKey::StakedPosition(user.clone(), token_address.clone(), token_id);
         let mut position = load_staked_position(&env, &position_key)
@@ -107,8 +165,9 @@ impl NftStaking {
             panic_with_error!(&env, StakingError::Unauthorized);
         }
 
+        let rate = Self::rewards_per_second(&env);
         let elapsed = env.ledger().timestamp() - position.staked_at;
-        let rewards = (elapsed as i128) * REWARDS_PER_SECOND;
+        let rewards = (elapsed as i128) * rate;
         position.rewards_earned += rewards;
 
         env.invoke_contract::<()>(
@@ -143,13 +202,14 @@ impl NftStaking {
         }
         user.require_auth();
 
+        let rate = Self::rewards_per_second(&env);
         let stake_keys = get_user_stakes(&env, &user);
         let mut total_rewards: i128 = 0;
 
         for key in stake_keys.iter() {
             if let Some(mut position) = load_staked_position(&env, &key) {
                 let elapsed = env.ledger().timestamp() - position.staked_at;
-                let rewards = (elapsed as i128) * REWARDS_PER_SECOND;
+                let rewards = (elapsed as i128) * rate;
                 position.rewards_earned += rewards;
                 position.staked_at = env.ledger().timestamp();
                 total_rewards += rewards;
@@ -197,12 +257,13 @@ impl NftStaking {
     }
 
     pub fn calculate_rewards(env: Env, user: Address) -> i128 {
+        let rate = Self::rewards_per_second(&env);
         let stake_keys = get_user_stakes(&env, &user);
         let mut total: i128 = 0;
         for key in stake_keys.iter() {
             if let Some(position) = load_staked_position(&env, &key) {
                 let elapsed = env.ledger().timestamp() - position.staked_at;
-                total += (elapsed as i128) * REWARDS_PER_SECOND + position.rewards_earned;
+                total += (elapsed as i128) * rate + position.rewards_earned;
             }
         }
         total

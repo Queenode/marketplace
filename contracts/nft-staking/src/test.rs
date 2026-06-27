@@ -35,11 +35,13 @@ fn setup() -> (Env, NftStakingClient<'static>, Address, Address, Address) {
     let admin = Address::generate(&env);
     let user1 = Address::generate(&env);
     let user2 = Address::generate(&env);
+    let nft = Address::generate(&env);
+    let reward_token = Address::generate(&env);
 
     let staking_id = env.register_contract(None, crate::NftStaking);
     let staking = NftStakingClient::new(&env, &staking_id);
 
-    staking.set_admin(&admin);
+    staking.init(&admin, &nft, &reward_token, &1_000_000i128);
 
     (env, staking, admin, user1, user2)
 }
@@ -51,11 +53,12 @@ fn setup_with_mock() -> (Env, NftStakingClient<'static>, Address, Address, Addre
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
     let collection = env.register_contract(None, mock_nft::MockNft);
+    let reward_token = Address::generate(&env);
 
     let staking_id = env.register_contract(None, crate::NftStaking);
     let staking = NftStakingClient::new(&env, &staking_id);
 
-    staking.set_admin(&admin);
+    staking.init(&admin, &collection, &reward_token, &1_000_000i128);
 
     (env, staking, user, collection, admin)
 }
@@ -96,11 +99,10 @@ fn test_total_staked() {
 
 #[test]
 fn test_multiple_stakes_per_user() {
-    let (env, staking, user, collection1, _admin) = setup_with_mock();
-    let collection2 = env.register_contract(None, mock_nft::MockNft);
+    let (_env, staking, user, collection1, _admin) = setup_with_mock();
 
     staking.stake(&user, &collection1, &0);
-    staking.stake(&user, &collection2, &1);
+    staking.stake(&user, &collection1, &1);
 
     let stakes = staking.get_user_stakes(&user);
     assert_eq!(stakes.len(), 2);

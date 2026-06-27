@@ -86,9 +86,20 @@ mod iface {
             royalty_receiver: Address,
         );
     }
+
+    #[contractclient(name = "NftStakingClient")]
+    pub trait INftStaking {
+        fn init(
+            env: Env,
+            admin: Address,
+            nft_address: Address,
+            reward_token: Address,
+            reward_rate: i128,
+        );
+    }
 }
 
-use iface::{Lazy1155Client, Lazy721Client, Normal1155Client, Normal721Client};
+use iface::{Lazy1155Client, Lazy721Client, NftStakingClient, Normal1155Client, Normal721Client};
 
 // ─── Salt hardening (fix #53) ─────────────────────────────────────────────────
 /// Bind `raw_salt` to the caller so that two different creators can never
@@ -378,6 +389,54 @@ impl Launchpad {
         Ok(addr)
     }
 
+    /// Register the NftStaking WASM hash (upload off-chain first).
+    pub fn set_staking_wasm_hash(env: Env, wasm_staking: BytesN<32>) -> Result<(), Error> {
+        storage::extend_instance_ttl(&env);
+        storage::require_admin(&env)?;
+        storage::set_staking_wasm_hash(&env, &wasm_staking);
+        Ok(())
+    }
+
+    // ── Deploy: Staking pool clone ────────────────────────────────────────
+
+    /// Deploy a dedicated NftStaking clone for an NFT collection.
+    ///
+    /// `salt` — unique 32 bytes per pool; combined with creator for front-run protection.
+    pub fn deploy_staking_pool(
+        env: Env,
+        creator: Address,
+        nft_address: Address,
+        reward_token: Address,
+        reward_rate: i128,
+        salt: BytesN<32>,
+    ) -> Result<Address, Error> {
+        storage::extend_instance_ttl(&env);
+        creator.require_auth();
+
+        if storage::staking_pool_by_nft(&env, &nft_address).is_some() {
+            return Err(Error::StakingPoolAlreadyExists);
+        }
+
+        let wasm = storage::get_staking_wasm_hash(&env).ok_or(Error::WasmHashNotSet)?;
+
+        let secure_salt = make_secure_salt(&env, &creator, &salt);
+        let addr = env
+            .deployer()
+            .with_current_contract(secure_salt)
+            .deploy_v2(wasm, ());
+
+        NftStakingClient::new(&env, &addr).init(
+            &creator,
+            &nft_address,
+            &reward_token,
+            &reward_rate,
+        );
+
+        storage::record_staking_pool(&env, &nft_address, &addr);
+        events::publish_staking_deploy(&env, &creator, &nft_address, &addr);
+        Ok(addr)
+    }
+
     // ── Admin management ──────────────────────────────────────────────────
 
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), Error> {
@@ -443,5 +502,10 @@ impl Launchpad {
     /// Callable from frontend and CLI.
     pub fn get_collection_count(env: Env) -> u64 {
         storage::collection_count(&env)
+    }
+
+    /// Look up the staking pool clone deployed for an NFT collection address.
+    pub fn get_staking_pool(env: Env, nft_address: Address) -> Option<Address> {
+        storage::staking_pool_by_nft(&env, &nft_address)
     }
 }

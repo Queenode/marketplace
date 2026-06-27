@@ -22,6 +22,12 @@ export interface StakedPosition {
   rewards_earned: string;
 }
 
+export interface StakingPoolConfig {
+  nftAddress: string;
+  rewardToken: string;
+  rewardRate: bigint;
+}
+
 export interface StakedNFTIndexerRow {
   id: number;
   owner: string;
@@ -38,12 +44,22 @@ export interface StakedNFTIndexerRow {
 export const STAKING_CONTRACT_ID =
   process.env.NEXT_PUBLIC_STAKING_CONTRACT_ID || "";
 
+const SECONDS_PER_YEAR = 31_536_000n;
+
 function getRpc(): SorobanRpc.Server {
   return new SorobanRpc.Server(config.rpcUrl, { allowHttp: false });
 }
 
-export function getStakingContract(): Contract {
-  return new Contract(STAKING_CONTRACT_ID);
+function resolveStakingContractId(poolContractId?: string): string {
+  const id = poolContractId || STAKING_CONTRACT_ID;
+  if (!id) {
+    throw new Error("Staking pool contract ID not configured");
+  }
+  return id;
+}
+
+export function getStakingContract(poolContractId?: string): Contract {
+  return new Contract(resolveStakingContractId(poolContractId));
 }
 
 function getNetworkPassphrase(): string {
@@ -55,10 +71,9 @@ async function invokeStakingContract(
   method: string,
   args: xdr.ScVal[],
   readonly = false,
+  poolContractId?: string,
 ): Promise<xdr.ScVal> {
-  if (!STAKING_CONTRACT_ID) {
-    throw new Error("STAKING_CONTRACT_ID not configured");
-  }
+  const contractId = resolveStakingContractId(poolContractId);
 
   const readableError = (raw: string, fallback: string): Error => {
     const mapped = mapSorobanErrorMessage(raw);
@@ -66,7 +81,7 @@ async function invokeStakingContract(
   };
 
   const rpc = getRpc();
-  const contract = getStakingContract();
+  const contract = new Contract(contractId);
 
   const account = await rpc.getAccount(callerPublicKey);
   const tx = new TransactionBuilder(account, {
@@ -125,33 +140,42 @@ export async function stake(
   userPublicKey: string,
   tokenAddress: string,
   tokenId: number,
+  poolContractId?: string,
 ): Promise<void> {
   const args: xdr.ScVal[] = [
     new Address(userPublicKey).toScVal(),
     new Address(tokenAddress).toScVal(),
     nativeToScVal(BigInt(tokenId), { type: "u64" }),
   ];
-  await invokeStakingContract(userPublicKey, "stake", args);
+  await invokeStakingContract(userPublicKey, "stake", args, false, poolContractId);
 }
 
 export async function unstake(
   userPublicKey: string,
   tokenAddress: string,
   tokenId: number,
+  poolContractId?: string,
 ): Promise<void> {
   const args: xdr.ScVal[] = [
     new Address(userPublicKey).toScVal(),
     new Address(tokenAddress).toScVal(),
     nativeToScVal(BigInt(tokenId), { type: "u64" }),
   ];
-  await invokeStakingContract(userPublicKey, "unstake", args);
+  await invokeStakingContract(userPublicKey, "unstake", args, false, poolContractId);
 }
 
 export async function claimRewards(
   userPublicKey: string,
+  poolContractId?: string,
 ): Promise<number> {
   const args: xdr.ScVal[] = [new Address(userPublicKey).toScVal()];
-  const retVal = await invokeStakingContract(userPublicKey, "claim_rewards", args);
+  const retVal = await invokeStakingContract(
+    userPublicKey,
+    "claim_rewards",
+    args,
+    false,
+    poolContractId,
+  );
   return Number(scValToNative(retVal));
 }
 
@@ -159,6 +183,7 @@ export async function getStakedPosition(
   userPublicKey: string,
   tokenAddress: string,
   tokenId: number,
+  poolContractId?: string,
 ): Promise<StakedPosition | null> {
   const caller = await getConnectedPublicKey();
   const pk = caller ?? userPublicKey;
@@ -171,13 +196,14 @@ export async function getStakedPosition(
       nativeToScVal(BigInt(tokenId), { type: "u64" }),
     ],
     true,
+    poolContractId,
   );
   const raw = scValToNative(retVal);
   if (!raw) return null;
   const obj = raw as Record<string, unknown>;
   return {
-    owner: (obj["owner"] as any).toString(),
-    token_address: (obj["token_address"] as any).toString(),
+    owner: (obj["owner"] as Address).toString(),
+    token_address: (obj["token_address"] as Address).toString(),
     token_id: Number(obj["token_id"]),
     staked_at: Number(obj["staked_at"]),
     rewards_earned: String(obj["rewards_earned"] ?? "0"),
@@ -186,6 +212,7 @@ export async function getStakedPosition(
 
 export async function getUserStakes(
   userPublicKey: string,
+  poolContractId?: string,
 ): Promise<StakedPosition[]> {
   const caller = await getConnectedPublicKey();
   const pk = caller ?? userPublicKey;
@@ -194,11 +221,12 @@ export async function getUserStakes(
     "get_user_stakes",
     [new Address(userPublicKey).toScVal()],
     true,
+    poolContractId,
   );
-  const raw = scValToNative(retVal) as any[];
-  return raw.map((obj: Record<string, unknown>) => ({
-    owner: (obj["owner"] as any).toString(),
-    token_address: (obj["token_address"] as any).toString(),
+  const raw = scValToNative(retVal) as Record<string, unknown>[];
+  return raw.map((obj) => ({
+    owner: (obj["owner"] as Address).toString(),
+    token_address: (obj["token_address"] as Address).toString(),
     token_id: Number(obj["token_id"]),
     staked_at: Number(obj["staked_at"]),
     rewards_earned: String(obj["rewards_earned"] ?? "0"),
@@ -207,6 +235,7 @@ export async function getUserStakes(
 
 export async function calculateRewards(
   userPublicKey: string,
+  poolContractId?: string,
 ): Promise<number> {
   const caller = await getConnectedPublicKey();
   const pk = caller ?? userPublicKey;
@@ -215,11 +244,14 @@ export async function calculateRewards(
     "calculate_rewards",
     [new Address(userPublicKey).toScVal()],
     true,
+    poolContractId,
   );
   return Number(scValToNative(retVal));
 }
 
-export async function isStakingPaused(): Promise<boolean> {
+export async function isStakingPaused(
+  poolContractId?: string,
+): Promise<boolean> {
   const caller = await getConnectedPublicKey();
   if (!caller) return false;
   const retVal = await invokeStakingContract(
@@ -227,13 +259,75 @@ export async function isStakingPaused(): Promise<boolean> {
     "is_paused",
     [],
     true,
+    poolContractId,
   );
   return Boolean(scValToNative(retVal));
 }
 
-export async function totalStaked(): Promise<number> {
+export async function totalStaked(poolContractId?: string): Promise<number> {
   const caller = await getConnectedPublicKey();
   if (!caller) return 0;
-  const retVal = await invokeStakingContract(caller, "total_staked", [], true);
+  const retVal = await invokeStakingContract(
+    caller,
+    "total_staked",
+    [],
+    true,
+    poolContractId,
+  );
   return Number(scValToNative(retVal));
+}
+
+export async function getStakingPoolConfig(
+  poolContractId: string,
+): Promise<StakingPoolConfig> {
+  const DUMMY_KEY =
+    "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+
+  const [nftVal, tokenVal, rateVal] = await Promise.all([
+    invokeStakingContract(DUMMY_KEY, "get_nft_address", [], true, poolContractId),
+    invokeStakingContract(DUMMY_KEY, "get_reward_token", [], true, poolContractId),
+    invokeStakingContract(DUMMY_KEY, "get_reward_rate", [], true, poolContractId),
+  ]);
+
+  return {
+    nftAddress: (scValToNative(nftVal) as Address).toString(),
+    rewardToken: (scValToNative(tokenVal) as Address).toString(),
+    rewardRate: BigInt(scValToNative(rateVal) as string | number | bigint),
+  };
+}
+
+/** Estimated annual reward tokens per staked NFT (7 decimal stroops). */
+export function formatAnnualYieldPerNft(rewardRate: bigint): string {
+  const annual = rewardRate * SECONDS_PER_YEAR;
+  const whole = annual / 10_000_000n;
+  const frac = annual % 10_000_000n;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac.toString().padStart(7, "0").replace(/0+$/, "");
+  return `${whole}.${fracStr}`;
+}
+
+/** Simple APY proxy: annual tokens per NFT when exactly one NFT is staked. */
+export function estimateApyPercent(
+  rewardRate: bigint,
+  stakedCount: number,
+): string {
+  if (stakedCount <= 0 || rewardRate <= 0n) {
+    const annual = rewardRate * SECONDS_PER_YEAR;
+    if (annual <= 0n) return "0";
+    return "—";
+  }
+  const annualPerNft =
+    Number(rewardRate * SECONDS_PER_YEAR) / stakedCount / 10_000_000;
+  return annualPerNft.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
+}
+
+export function formatRewardRatePerDay(rewardRate: bigint): string {
+  const daily = rewardRate * 86_400n;
+  const whole = daily / 10_000_000n;
+  const frac = daily % 10_000_000n;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac.toString().padStart(7, "0").replace(/0+$/, "");
+  return `${whole}.${fracStr}`;
 }

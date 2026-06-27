@@ -8,6 +8,7 @@ pub enum Error {
     NotInitialized = 2,
     NotAdmin = 3,
     WasmHashNotSet = 4,
+    StakingPoolAlreadyExists = 5,
 }
 
 /// Which of the four collection types was deployed.
@@ -51,4 +52,8 @@ pub enum DataKey {
     CreatorCollectionByIndex(Address, u64),
     /// Lookup a collection record by its deployed address
     CollectionByAddress(Address),
+    /// WASM hash for NftStaking clone deployments
+    WasmStaking,
+    /// Maps an NFT collection address to its staking pool clone
+    StakingPoolByNft(Address),
 }

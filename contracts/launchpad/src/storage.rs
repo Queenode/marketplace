@@ -83,6 +83,32 @@ pub fn get_wasm_lazy_1155(env: &Env) -> Option<BytesN<32>> {
     env.storage().instance().get(&DataKey::WasmLazy1155)
 }
 
+pub fn set_staking_wasm_hash(env: &Env, hash: &BytesN<32>) {
+    env.storage().instance().set(&DataKey::WasmStaking, hash);
+}
+
+pub fn get_staking_wasm_hash(env: &Env) -> Option<BytesN<32>> {
+    env.storage().instance().get(&DataKey::WasmStaking)
+}
+
+pub fn staking_pool_by_nft(env: &Env, nft_address: &Address) -> Option<Address> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::StakingPoolByNft(nft_address.clone()))
+}
+
+pub fn record_staking_pool(env: &Env, nft_address: &Address, pool_address: &Address) {
+    env.storage().persistent().set(
+        &DataKey::StakingPoolByNft(nft_address.clone()),
+        pool_address,
+    );
+    env.storage().persistent().extend_ttl(
+        &DataKey::StakingPoolByNft(nft_address.clone()),
+        TTL_THRESHOLD,
+        TTL_BUMP,
+    );
+}
+
 pub fn collections_by_creator(env: &Env, creator: &Address) -> Vec<CollectionRecord> {
     let count = creator_collection_count(env, creator);
     let mut result = Vec::new(env);

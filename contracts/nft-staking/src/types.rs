@@ -11,6 +11,9 @@ pub enum StakingError {
     TransferFailed = 5,
     InvalidDuration = 6,
     ContractPaused = 7,
+    AlreadyInitialized = 8,
+    NotInitialized = 9,
+    InvalidToken = 10,
 }
 
 #[contracttype]

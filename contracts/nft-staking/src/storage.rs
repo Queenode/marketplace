@@ -11,6 +11,9 @@ pub enum DataKey {
     Admin,
     IsPaused,
     TokenWhitelist,
+    Initialized,
+    NftAddress,
+    RewardToken,
 }
 
 pub const LEDGER_TTL_BUMP: u32 = 432_000;
@@ -103,4 +106,46 @@ pub fn get_total_staked(env: &Env) -> u64 {
         .persistent()
         .get::<DataKey, u64>(&DataKey::TotalStaked)
         .unwrap_or(0)
+}
+
+pub fn is_initialized(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Initialized)
+        .unwrap_or(false)
+}
+
+pub fn set_initialized(env: &Env) {
+    env.storage().instance().set(&DataKey::Initialized, &true);
+}
+
+pub fn set_nft_address(env: &Env, addr: &Address) {
+    env.storage().instance().set(&DataKey::NftAddress, addr);
+}
+
+pub fn get_nft_address(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::NftAddress)
+}
+
+pub fn set_reward_token(env: &Env, addr: &Address) {
+    env.storage().instance().set(&DataKey::RewardToken, addr);
+}
+
+pub fn get_reward_token(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::RewardToken)
+}
+
+pub fn set_reward_config(env: &Env, config: &crate::types::RewardConfig) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::RewardConfig, config);
+    env.storage().persistent().extend_ttl(
+        &DataKey::RewardConfig,
+        LEDGER_TTL_THRESHOLD,
+        LEDGER_TTL_BUMP,
+    );
+}
+
+pub fn get_reward_config(env: &Env) -> Option<crate::types::RewardConfig> {
+    env.storage().persistent().get(&DataKey::RewardConfig)
 }

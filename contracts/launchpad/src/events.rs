@@ -15,3 +15,16 @@ pub fn publish_deploy(
         (creator.clone(), address.clone(), kind.clone()),
     );
 }
+
+#[allow(deprecated)]
+pub fn publish_staking_deploy(
+    env: &Env,
+    creator: &Address,
+    nft_address: &Address,
+    pool_address: &Address,
+) {
+    env.events().publish(
+        (symbol_short!("stake"), symbol_short!("pool")),
+        (creator.clone(), nft_address.clone(), pool_address.clone()),
+    );
+}

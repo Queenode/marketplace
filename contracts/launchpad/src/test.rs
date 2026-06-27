@@ -1129,3 +1129,51 @@ fn deploy_events_include_kind_in_payload() {
     // Confirm total count covers both
     assert_eq!(client.get_collection_count(), 2u64);
 }
+
+fn setup_launchpad_with_staking(env: &Env) -> (LaunchpadClient<'_>, Address, Address) {
+    env.mock_all_auths();
+
+    let launchpad_id = env.register(Launchpad, ());
+    let client = LaunchpadClient::new(env, &launchpad_id);
+
+    let admin = Address::generate(env);
+    let creator = Address::generate(env);
+    let fee_receiver = Address::generate(env);
+
+    client.initialize(&admin, &fee_receiver, &0u32);
+
+    let wasm_staking_bytes = wasm_bytes("nft_staking");
+    let wasm_staking = env
+        .deployer()
+        .upload_contract_wasm(wasm_staking_bytes.as_slice());
+
+    client.set_staking_wasm_hash(&wasm_staking);
+
+    (client, admin, creator)
+}
+
+#[test]
+fn deploys_staking_pool_for_nft_collection() {
+    let env = Env::default();
+    env.ledger().with_mut(|li| li.sequence_number = 1);
+    let (client, _admin, creator) = setup_launchpad_with_staking(&env);
+
+    let nft_address = Address::generate(&env);
+    let reward_token = Address::generate(&env);
+    let salt = BytesN::from_array(&env, &[0xAAu8; 32]);
+
+    let pool_a =
+        client.deploy_staking_pool(&creator, &nft_address, &reward_token, &1_000_000i128, &salt);
+
+    let pool_b = client.get_staking_pool(&nft_address);
+    assert_eq!(Some(pool_a), pool_b);
+
+    let duplicate = client.try_deploy_staking_pool(
+        &creator,
+        &nft_address,
+        &reward_token,
+        &1_000_000i128,
+        &BytesN::from_array(&env, &[0xBBu8; 32]),
+    );
+    assert_eq!(duplicate, Err(Ok(Error::StakingPoolAlreadyExists)));
+}
